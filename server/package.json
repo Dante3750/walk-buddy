@@ -1,0 +1,13 @@
+{
+  "name": "walk-buddy-signaling",
+  "version": "1.0.0",
+  "description": "Tiny WebRTC signaling relay for Walk Buddy: in-memory rooms by code, relays offer/answer/ice only",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": { "ws": "^8.18.0" },
+  "license": "MIT"
+}

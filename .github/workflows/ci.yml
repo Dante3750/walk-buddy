@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node: [18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install
+        working-directory: server
+        run: npm ci
+      - name: Signaling server tests
+        working-directory: server
+        run: npm test
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Accept SDK licenses and install platform
+        run: |
+          # The ubuntu runner image ships the Android SDK (ANDROID_HOME).
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+      - name: Domain unit tests
+        run: |
+          set -o pipefail
+          gradle :domain:test --stacktrace 2>&1 | tee domain-test.log
+
+      - name: Assemble debug APK
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Lint (non-blocking)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle :app:lintDebug 2>&1 | tee lint.log
+
+      - name: Optional Health Connect build (non-blocking)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle :app:compileDebugKotlin -PhealthConnect=true 2>&1 | tee health-connect.log
+
+      - name: Summarize failures
+        if: failure()
+        run: |
+          scripts/ci-summarize.sh build.log
+          scripts/ci-summarize.sh domain-test.log
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-buddy-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload reports and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-and-logs
+          path: |
+            *.log
+            domain/build/reports/
+            domain/build/test-results/
+            app/build/reports/
+          if-no-files-found: ignore

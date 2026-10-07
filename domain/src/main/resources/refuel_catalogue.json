@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "note": "General wellness ideas only. India-first. diet = the strictest diet that still fits: vegan < vegetarian (dairy) < egg.",
+  "items": [
+    {"id": "water", "name": "Water", "diet": "vegan", "kind": "hydration", "ingredients": ["water"], "region": "everywhere", "note": "Sip before, during and after a walk. Carry a bottle."},
+    {"id": "coconut_water", "name": "Coconut water (nariyal pani)", "diet": "vegan", "kind": "hydration", "ingredients": ["coconut water"], "region": "south, coastal", "note": "A refreshing, naturally lightly salty drink after a warm walk."},
+    {"id": "nimbu_pani", "name": "Nimbu pani with a pinch of salt", "diet": "vegan", "kind": "electrolyte", "ingredients": ["lemon", "water", "salt"], "region": "everywhere", "note": "A simple salty-sweet drink for hot, sweaty days. Skip the extra salt if you have been told to limit it."},
+    {"id": "buttermilk", "name": "Buttermilk (chaas)", "diet": "vegetarian", "kind": "electrolyte", "ingredients": ["curd", "water", "salt", "cumin"], "region": "everywhere", "note": "Cooling and a little salty. Good on hot days."},
+    {"id": "ors_homemade", "name": "Lightly salted water with a squeeze of lemon", "diet": "vegan", "kind": "electrolyte", "ingredients": ["water", "lemon", "salt"], "region": "everywhere", "note": "For very hot, long walks. Take small sips."},
+    {"id": "banana", "name": "Banana", "diet": "vegan", "kind": "fruit", "ingredients": ["banana"], "region": "everywhere", "note": "Easy to carry, gentle on the stomach."},
+    {"id": "seasonal_fruit", "name": "Seasonal fruit (guava, papaya, orange, apple)", "diet": "vegan", "kind": "fruit", "ingredients": ["fruit"], "region": "everywhere", "note": "Whatever is fresh near you."},
+    {"id": "peanuts", "name": "A handful of roasted peanuts", "diet": "vegan", "kind": "snack", "ingredients": ["peanuts"], "region": "everywhere", "note": "Crunchy and filling. Skip if you have a nut allergy."},
+    {"id": "roasted_chana", "name": "Roasted chana", "diet": "vegan", "kind": "snack", "ingredients": ["chickpeas"], "region": "north, central", "note": "A light, protein-rich crunchy snack."},
+    {"id": "nuts_dates", "name": "Almonds and a date or two", "diet": "vegan", "kind": "snack", "ingredients": ["almonds", "dates"], "region": "everywhere", "note": "Pocket-friendly option for longer walks."},
+    {"id": "sprouts_chaat", "name": "Sprouts chaat with lemon", "diet": "vegan", "kind": "protein_carb", "ingredients": ["moong sprouts", "onion", "tomato", "lemon"], "region": "everywhere", "note": "Fresh, protein and fibre together."},
+    {"id": "chana_salad", "name": "Boiled chana salad", "diet": "vegan", "kind": "protein_carb", "ingredients": ["chickpeas", "onion", "cucumber", "lemon"], "region": "everywhere", "note": "A simple pairing of protein and complex carbs."},
+    {"id": "poha", "name": "Poha with peanuts and vegetables", "diet": "vegan", "kind": "protein_carb", "ingredients": ["flattened rice", "peanuts", "vegetables"], "region": "west, central", "note": "A light breakfast after a morning walk."},
+    {"id": "upma", "name": "Vegetable upma", "diet": "vegan", "kind": "protein_carb", "ingredients": ["semolina", "vegetables", "peanuts"], "region": "south", "note": "Warm and easy to digest."},
+    {"id": "idli_sambar", "name": "Idli with sambar", "diet": "vegan", "kind": "protein_carb", "ingredients": ["rice", "urad dal", "lentils", "vegetables"], "region": "south", "note": "Lentils plus rice make a balanced, light meal."},
+    {"id": "dal_rice", "name": "Dal, rice and a vegetable", "diet": "vegan", "kind": "protein_carb", "ingredients": ["lentils", "rice", "vegetables"], "region": "everywhere", "note": "A classic balanced plate after a longer or brisker walk."},
+    {"id": "curd_lassi", "name": "Curd or a glass of lassi", "diet": "vegetarian", "kind": "protein_carb", "ingredients": ["curd", "water"], "region": "north", "note": "Protein and probiotics; go lighter on sugar."},
+    {"id": "paneer_wrap", "name": "Paneer bhurji with a roti", "diet": "vegetarian", "kind": "protein_carb", "ingredients": ["paneer", "whole wheat flour", "onion", "tomato"], "region": "north", "note": "Protein with whole grains."},
+    {"id": "moong_chilla", "name": "Moong dal chilla", "diet": "vegan", "kind": "protein_carb", "ingredients": ["moong dal", "vegetables"], "region": "north, west", "note": "Protein-rich and light."},
+    {"id": "boiled_egg", "name": "Boiled eggs with fruit or toast", "diet": "egg", "kind": "protein_carb", "ingredients": ["egg", "bread"], "region": "everywhere", "note": "Quick protein after a brisk walk."},
+    {"id": "egg_bhurji", "name": "Egg bhurji with a roti", "diet": "egg", "kind": "protein_carb", "ingredients": ["egg", "whole wheat flour", "onion", "tomato"], "region": "everywhere", "note": "A familiar, filling post-walk plate."},
+    {"id": "fruit_curd", "name": "Fruit with a bowl of curd", "diet": "vegetarian", "kind": "snack", "ingredients": ["fruit", "curd"], "region": "everywhere", "note": "Cooling and simple."}
+  ]
+}
