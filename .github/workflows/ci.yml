@@ -76,10 +76,10 @@ jobs:
           gradle :app:compileDebugKotlin -PhealthConnect=true 2>&1 | tee health-connect.log
 
       - name: Summarize failures
-        if: failure()
+        if: always()
         run: |
-          scripts/ci-summarize.sh build.log
-          scripts/ci-summarize.sh domain-test.log
+          # Prints compiler errors as annotations so they can be read without signing in.
+          for f in build.log domain-test.log health-connect.log; do scripts/ci-summarize.sh "$f"; done
 
       - name: Upload debug APK
         if: success()
