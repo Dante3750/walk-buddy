@@ -5,6 +5,8 @@ ksp = "2.0.21-1.0.28"
 composeBom = "2024.12.01"
 coreKtx = "1.15.0"
 splashScreen = "1.0.1"
+# Home-screen widget (isolated in the :widget module).
+glance = "1.1.1"
 lifecycle = "2.8.7"
 activityCompose = "1.9.3"
 navigationCompose = "2.8.5"
@@ -38,6 +40,7 @@ androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref =
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 junit = { module = "junit:junit", version.ref = "junit" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 stream-webrtc = { module = "io.getstream:stream-webrtc-android", version.ref = "streamWebrtc" }
@@ -45,6 +48,7 @@ health-connect = { module = "androidx.health.connect:connect-client", version.re
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

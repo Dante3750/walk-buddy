@@ -17,9 +17,6 @@
     <string name="tile_start">शुरू करने के लिए टैप करें</string>
     <string name="tile_stop">खत्म करने के लिए टैप करें</string>
 
-    <string name="widget_label">आज के कदम</string>
-    <string name="widget_description">होम स्क्रीन पर आपके कदम और लक्ष्य की रिंग।</string>
-
     <string name="notif_title">वॉक बडी</string>
     <string name="notif_end_walk">सैर खत्म करें</string>
     <string name="share_chooser">साझा करें</string>

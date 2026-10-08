@@ -17,9 +17,6 @@
     <string name="tile_start">Tap to start</string>
     <string name="tile_stop">Tap to end</string>
 
-    <string name="widget_label">Today\'s steps</string>
-    <string name="widget_description">Your step count and goal ring on the home screen.</string>
-
     <string name="notif_title">Walk Buddy</string>
     <string name="notif_end_walk">End walk</string>
     <string name="share_chooser">Share</string>

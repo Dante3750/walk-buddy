@@ -1,0 +1,4 @@
+<resources>
+    <string name="widget_label">Today\'s steps</string>
+    <string name="widget_description">Your step count and goal ring on the home screen.</string>
+</resources>

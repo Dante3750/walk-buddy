@@ -8,6 +8,8 @@ plugins {
 
 // Health Connect is optional and OFF by default so the default build cannot be broken by it.
 // Enable with: ./gradlew :app:assembleDebug -PhealthConnect=true
+// The widget module is optional too (see settings.gradle.kts). The app talks to it by component name only.
+val widgetEnabled = (project.findProperty("widget") as String?) != "false"
 val healthConnectEnabled = (project.findProperty("healthConnect") as String?) == "true"
 
 android {
@@ -55,6 +57,9 @@ android {
 
 dependencies {
     implementation(project(":domain"))
+    if (widgetEnabled) {
+        implementation(project(":widget"))
+    }
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)

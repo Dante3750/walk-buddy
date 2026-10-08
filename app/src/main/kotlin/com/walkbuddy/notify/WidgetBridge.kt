@@ -26,7 +26,7 @@ object WidgetBridge {
         lastSteps = steps; lastGoal = goal; lastAt = now
         val app = context.applicationContext
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putInt("steps", steps).putInt("goal", goal).putString("name", name).putLong("day", System.currentTimeMillis() / 86_400_000L).apply()
+            .putInt("steps", steps).putInt("goal", goal).putString("name", name).putLong("at", now).apply()
         runCatching {
             val cn = ComponentName(app.packageName, RECEIVER)
             val ids = AppWidgetManager.getInstance(app).getAppWidgetIds(cn)
