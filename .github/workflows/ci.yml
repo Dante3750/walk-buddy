@@ -100,3 +100,72 @@ jobs:
             domain/build/test-results/
             app/build/reports/
           if-no-files-found: ignore
+
+  # Renders every main screen to PNG with Paparazzi (JVM, no emulator) so the UI can be reviewed without a phone.
+  # Separate from the `android` job and allowed to fail: it never blocks the green build.
+  # Uploads the PNGs as an artifact and force-pushes them (a tiny orphan commit, overwritten each run) to the
+  # `ci-screenshots` branch, so they can be fetched with plain `git fetch origin ci-screenshots`.
+  screenshots:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Accept SDK licenses and install platform
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+      - name: Render screenshots (Paparazzi)
+        run: |
+          set -o pipefail
+          gradle :app:recordPaparazziDebug --stacktrace 2>&1 | tee shots.log
+
+      - name: Summarize failures
+        if: always()
+        run: scripts/ci-summarize.sh shots.log
+
+      - name: Collect PNGs
+        if: always()
+        run: |
+          mkdir -p out
+          find app/build app/src/test -name '*.png' -path '*snapshots*' 2>/dev/null | head -200 | while read -r f; do
+            n=$(basename "$f" | sed -E 's/^.*Test_//')
+            cp "$f" "out/$n"
+          done
+          ls -la out
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: |
+            out/*.png
+            shots.log
+          if-no-files-found: ignore
+
+      - name: Publish to ci-screenshots branch
+        if: always() && hashFiles('out/*.png') != ''
+        run: |
+          cd out
+          git init -q -b ci-screenshots
+          git config user.name "ci-screenshots"
+          git config user.email "ci-screenshots@users.noreply.github.com"
+          echo "Rendered by CI run ${GITHUB_RUN_ID} from ${GITHUB_SHA}" > README.txt
+          git add -A
+          git commit -q -m "Screenshots for ${GITHUB_SHA}"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ci-screenshots

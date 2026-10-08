@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.paparazzi)
 }
 
 // Health Connect is optional and OFF by default so the default build cannot be broken by it.
