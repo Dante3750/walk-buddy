@@ -28,12 +28,14 @@ class PermState(private val context: Context) {
     }
 
     val location: Boolean get() = granted(Manifest.permission.ACCESS_FINE_LOCATION)
-    val activity: Boolean get() = granted(Manifest.permission.ACTIVITY_RECOGNITION)
+    /** Physical activity (step counting). A runtime permission only from Android 10; before that the step sensors need no permission. */
+    val activity: Boolean get() = Build.VERSION.SDK_INT < 29 || granted(Manifest.permission.ACTIVITY_RECOGNITION)
     val notifications: Boolean get() = Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)
 
     companion object {
         val LOCATION = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-        val ACTIVITY = arrayOf(Manifest.permission.ACTIVITY_RECOGNITION)
+        val ACTIVITY: Array<String> =
+            if (Build.VERSION.SDK_INT >= 29) arrayOf(Manifest.permission.ACTIVITY_RECOGNITION) else emptyArray()
         val NOTIFICATIONS: Array<String> =
             if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()
     }

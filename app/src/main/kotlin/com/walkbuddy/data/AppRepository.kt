@@ -1,6 +1,9 @@
 package com.walkbuddy.data
 
+import androidx.room.withTransaction
 import com.walkbuddy.domain.CsvExport
+import com.walkbuddy.domain.DaySteps
+import com.walkbuddy.domain.StepBaseline
 import com.walkbuddy.domain.DayRecord
 import com.walkbuddy.domain.BadgeId
 import com.walkbuddy.domain.FavoriteSpot
@@ -54,6 +57,20 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
             if (dao.bumpHour(epochDay, hour, v) == 0) dao.putHour(HourEntity(epochDay, hour, v))
         }
     }
+
+    /** Day totals and the counter baseline in ONE transaction: a crash can neither lose nor double-count steps. */
+    suspend fun applyStepUpdate(parts: List<DaySteps>, baseline: StepBaseline) {
+        db.withTransaction {
+            parts.forEach { addSteps(it.epochDay, it.raw, it.verified, it.hour) }
+            dao.putStepState(StepStateEntity.of(baseline))
+        }
+    }
+
+    suspend fun stepBaseline(): StepBaseline? = dao.stepState()?.toBaseline()
+
+    val stepState: Flow<StepStateEntity?> = dao.stepStateFlow()
+
+    fun verifiedStepsOn(epochDay: Long): Flow<Int> = dao.verifiedStepsFlow(epochDay).map { it ?: 0 }
 
     suspend fun setGentle(epochDay: Long, gentle: Boolean) {
         val d = dao.day(epochDay) ?: DayEntity(epochDay, 0, 0, 0, 0, 0.0, false)
@@ -128,7 +145,7 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
 
     /** Delete-all: every table and every preference. */
     suspend fun deleteAll() {
-        dao.clearDays(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges()
+        dao.clearDays(); dao.clearStepState(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges()
         settings.clearAll()
     }
 }

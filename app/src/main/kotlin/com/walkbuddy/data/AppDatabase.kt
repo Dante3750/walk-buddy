@@ -72,6 +72,22 @@ interface AppDao {
     @Query("DELETE FROM walk_dates WHERE id = :id")
     suspend fun deleteDate(id: Long)
 
+    // step counter baseline
+    @Query("SELECT * FROM step_state WHERE id = 1")
+    suspend fun stepState(): StepStateEntity?
+
+    @Query("SELECT * FROM step_state WHERE id = 1")
+    fun stepStateFlow(): Flow<StepStateEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putStepState(s: StepStateEntity)
+
+    @Query("DELETE FROM step_state")
+    suspend fun clearStepState()
+
+    @Query("SELECT verifiedSteps FROM days WHERE epochDay = :day")
+    fun verifiedStepsFlow(day: Long): Flow<Int?>
+
     // hours
     @Query("SELECT * FROM hours")
     fun hours(): Flow<List<HourEntity>>
@@ -125,8 +141,8 @@ interface AppDao {
 }
 
 @Database(
-    entities = [DayEntity::class, WalkEntity::class, SpotEntity::class, DateEntity::class, HourEntity::class, MoodEntity::class, BadgeEntity::class],
-    version = 2,
+    entities = [DayEntity::class, WalkEntity::class, SpotEntity::class, DateEntity::class, HourEntity::class, MoodEntity::class, BadgeEntity::class, StepStateEntity::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -143,9 +159,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** alpha 1.5 to 1.6: the step-counter baseline moves into the database. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS step_state (id INTEGER NOT NULL, counter INTEGER NOT NULL, tMs INTEGER NOT NULL, bootMs INTEGER, kind TEXT NOT NULL, PRIMARY KEY(id))")
+            }
+        }
+
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "walkbuddy.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

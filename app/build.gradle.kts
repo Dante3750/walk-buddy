@@ -21,8 +21,8 @@ android {
         applicationId = "com.walkbuddy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.0-alpha"
+        versionCode = 5
+        versionName = "1.6.0-alpha"
         buildConfigField("boolean", "HEALTH_CONNECT", healthConnectEnabled.toString())
     }
 
@@ -81,6 +81,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 

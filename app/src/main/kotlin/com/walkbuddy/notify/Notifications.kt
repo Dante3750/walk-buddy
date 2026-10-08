@@ -21,9 +21,11 @@ object Notifications {
     @Volatile var hapticsEnabled: Boolean = true
 
     const val CH_WALK = "walk"
+    const val CH_STEPS = "steps"
     const val CH_NUDGE = "nudge"
     const val CH_REMIND = "remind"
     const val ID_WALK = 1001
+    const val ID_STEPS = 1004
     private const val ID_NUDGE = 1002
     private const val ID_REMIND = 1003
 
@@ -31,6 +33,10 @@ object Notifications {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(NotificationChannel(CH_WALK, "Walk in progress", NotificationManager.IMPORTANCE_LOW).apply {
             description = "Shown while a walk is running so the phone keeps sharing."
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_STEPS, "Step counting", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "A quiet notice that keeps step counting alive all day, even when the app is closed. It shows today's steps."
+            setShowBadge(false)
         })
         nm.createNotificationChannel(NotificationChannel(CH_NUDGE, "Gentle nudges", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Occasional, calm hints during a walk together."
@@ -60,6 +66,21 @@ object Notifications {
         val n = b.build()
         return if (percent != null) LiveUpdate.style(context, n, percent, shortText) else n
     }
+
+    /** The quiet, always-on step counting notification (the foreground service's). */
+    fun stepsOngoing(context: Context, steps: Int): Notification =
+        NotificationCompat.Builder(context, CH_STEPS)
+            .setSmallIcon(R.drawable.ic_stat_walk)
+            .setContentTitle("%,d steps today".format(steps))
+            .setContentText("Walk Buddy is counting quietly. Nothing leaves your phone.")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setContentIntent(openApp(context))
+            .build()
 
     private fun canPost(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

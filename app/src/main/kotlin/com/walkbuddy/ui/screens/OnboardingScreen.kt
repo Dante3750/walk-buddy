@@ -69,7 +69,11 @@ fun OnboardingScreen(onName: (String) -> Unit, onUnits: (UnitSystem) -> Unit, on
     var units by remember { mutableStateOf(UnitSystem.Metric) }
     var shown by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { delay(350); shown = 6_284 }
-    val askActivity = rememberPermissionRequester(perms)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val askActivity = rememberPermissionRequester(perms) {
+        com.walkbuddy.steps.StepTracking.markAsked(ctx)
+        if (perms.activity) com.walkbuddy.steps.StepTracking.onPermissionGranted(ctx)
+    }
     val askNotifications = rememberPermissionRequester(perms)
 
     BackHandler(enabled = page > 0) { page -= 1 }

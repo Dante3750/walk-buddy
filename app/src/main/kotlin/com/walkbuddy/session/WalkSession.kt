@@ -13,7 +13,6 @@ import com.walkbuddy.domain.ServerConfig
 import com.walkbuddy.rtc.SignalingClient
 import com.walkbuddy.rtc.SignalingState
 import com.walkbuddy.sensors.LocationSource
-import com.walkbuddy.sensors.StepSource
 import com.walkbuddy.data.Clock
 import com.walkbuddy.data.Goals
 import com.walkbuddy.domain.ActivityState
@@ -100,7 +99,6 @@ class WalkSession(
     private val repo: AppRepository,
     private val settingsStore: SettingsStore,
     private val steps: StepRecorder,
-    private val stepSource: StepSource,
     private val locationSource: LocationSource,
     private val health: HealthBridge,
     private val routes: RouteStore,
@@ -309,7 +307,7 @@ class WalkSession(
             settings = s
             val now = System.currentTimeMillis()
             walkStartMs = now
-            steps.recordIdle(now) // account for steps before the walk as ordinary daily steps
+            val startSample = steps.sampleNow() // credits steps before the walk to the day, and gives the walk its starting counter
             val stepLen = s.calibratedStepLengthM
             val cfg = WalkConfig(
                 radiusM = s.radiusM.toDouble(),
@@ -330,10 +328,14 @@ class WalkSession(
                 }
             }
             walkJobs += scope.launch {
-                stepSource.readings().collect { counter ->
-                    val t = System.currentTimeMillis()
-                    val d = e.onSelfSteps(t, counter)
-                    steps.recordWalkDelta(t, counter, d)
+                // The walk reads the same feed as the all-day counter; it never writes daily steps itself, so nothing is counted twice.
+                steps.acquire("walk")
+                try {
+                    startSample?.let { e.onSelfSteps(it.baseline.tMs, it.baseline.counter) }
+                    val from = startSample?.baseline?.tMs ?: now
+                    steps.live.collect { r -> if (r.wallMs >= from) e.onSelfSteps(r.wallMs, r.counter) }
+                } finally {
+                    steps.release("walk")
                 }
             }
             walkJobs += scope.launch { tickLoop(e) }
@@ -349,7 +351,6 @@ class WalkSession(
             n++
             if (n % 2 == 0) e.selfPosition(now)?.let { link?.broadcast(MessageCodec.encode(it)) }
             if (n % 10 == 0) broadcastDaily()
-            if (n % 30 == 0) steps.persistBaseline()
             st.myPos?.let { trailBook.add("me", it) }
             st.buddies.forEach { b -> b.pos?.let { trailBook.add(b.id, it) } }
             _ui.update { it.copy(walk = st, trails = trailBook.snapshot()) }
@@ -424,7 +425,6 @@ class WalkSession(
             link?.broadcast(MessageCodec.encode(PeerMessage.Bye))
             walkJobs.forEach { it.cancel() }; walkJobs.clear()
             val summary = e.finish(now)
-            steps.persistBaseline()
             teardownNetwork() // sharing ends when the walk ends
             val walkId = repo.saveWalk(summary, walkStartMs)
             if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)

@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Always-on step counting runs as a foreground service of type health (Android 14+ requires this permission). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Android 16 live updates (the walk notification as a progress-style "live" notification). Harmless on older versions. -->
@@ -75,6 +77,12 @@
             android:name=".session.WalkService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Always-on step counting: a quiet low-priority foreground service holding one batched step-counter listener. -->
+        <service
+            android:name=".steps.StepService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
 
         <!-- Quick Settings tile: start or end a walk from the notification shade. -->
         <service

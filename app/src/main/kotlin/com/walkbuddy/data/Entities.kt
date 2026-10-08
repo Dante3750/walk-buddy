@@ -7,6 +7,8 @@ import com.walkbuddy.domain.DayRecord
 import com.walkbuddy.domain.FavoriteSpot
 import com.walkbuddy.domain.HourSteps
 import com.walkbuddy.domain.MoodEntry
+import com.walkbuddy.domain.StepBaseline
+import com.walkbuddy.domain.StepSensorKind
 import com.walkbuddy.domain.WalkDate
 import com.walkbuddy.domain.WalkRecord
 
@@ -22,6 +24,22 @@ data class DayEntity(
     @ColumnInfo(defaultValue = "0") val gentle: Boolean = false,
 ) {
     fun toDomain() = DayRecord(epochDay, rawSteps, verifiedSteps, moderateMin, vigorousMin, distanceM, restDay, gentle)
+}
+
+/** The last step-counter reading we accounted for (one row, id 1). Written in the same transaction as the day totals, so a crash can neither lose nor double-count steps. */
+@Entity(tableName = "step_state")
+data class StepStateEntity(
+    @PrimaryKey val id: Int = 1,
+    val counter: Long,
+    val tMs: Long,
+    val bootMs: Long?,
+    val kind: String,
+) {
+    fun toBaseline() = runCatching { StepBaseline(counter, tMs, bootMs, StepSensorKind.valueOf(kind)) }.getOrNull()
+
+    companion object {
+        fun of(b: StepBaseline) = StepStateEntity(1, b.counter, b.tMs, b.bootMs, b.kind.name)
+    }
 }
 
 @Entity(tableName = "hours", primaryKeys = ["epochDay", "hour"])

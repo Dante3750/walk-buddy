@@ -56,7 +56,14 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.app.Activity
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.walkbuddy.domain.StepCountingStatus
+import com.walkbuddy.domain.StepHealth
+import com.walkbuddy.steps.StepTracking
 import com.walkbuddy.data.Clock
 import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.GentleDay
@@ -125,6 +132,34 @@ fun HomeScreen(
         action = null
     }
 
+    // ---- step counting permission and notices ----
+    var askTick by remember { mutableIntStateOf(0) }
+    val askActivity = rememberPermissionRequester(perms) {
+        StepTracking.markAsked(ctx)
+        askTick++
+        if (perms.activity) vm.stepsPermissionGranted()
+    }
+    // Coming back from the system settings page (or any other app) re-checks the permission and the battery state.
+    var resumeTick by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        perms.refresh()
+        resumeTick++
+        if (perms.activity) vm.stepsPermissionGranted()
+    }
+    val stepsNotice: StepsNotice = run {
+        if (askTick < 0 || resumeTick < 0) return@run StepsNotice.None // reads both, so this recomputes after a permission answer or a return from settings
+        val granted = perms.activity
+        val activity = ctx as? Activity
+        val blocked = !granted && StepTracking.wasAsked(ctx) && activity != null &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.ACTIVITY_RECOGNITION)
+        when (StepHealth.status(vm.stepKind, vm.stepsNeedPermission, granted, blocked)) {
+            StepCountingStatus.NoSensor -> StepsNotice.NoSensor
+            StepCountingStatus.NeedsPermission -> StepsNotice.NeedsPermission
+            StepCountingStatus.PermissionBlocked -> StepsNotice.PermissionBlocked
+            StepCountingStatus.Counting ->
+                if (!StepTracking.batteryTipDismissed(ctx) && !StepTracking.ignoringBatteryOptimizations(ctx)) StepsNotice.BatteryTip else StepsNotice.None
+        }
+    }
     fun withLocation(run: () -> Unit) {
         if (perms.location) run() else { action = run; askLocation(PermState.LOCATION) }
     }
@@ -160,7 +195,12 @@ fun HomeScreen(
         locationGranted = perms.location,
         burst = burst,
         onBurstDone = { burst = false },
+        notice = stepsNotice,
         a = HomeActions(
+            onAllowSteps = { askActivity(PermState.ACTIVITY) },
+            onOpenAppSettings = { StepTracking.openAppSettings(ctx) },
+            onBatterySettings = { StepTracking.openBatterySettings(ctx) },
+            onDismissBatteryTip = { StepTracking.dismissBatteryTip(ctx); resumeTick++ },
             onGentle = { vm.setGentleToday(it) },
             onRest = { vm.setRestToday(it) },
             onShare = {
@@ -262,7 +302,14 @@ class HomeActions(
     val onJoinGroup: () -> Unit = {},
     val onDemoGroup: () -> Unit = {},
     val onUseRealData: () -> Unit = {},
+    val onAllowSteps: () -> Unit = {},
+    val onOpenAppSettings: () -> Unit = {},
+    val onBatterySettings: () -> Unit = {},
+    val onDismissBatteryTip: () -> Unit = {},
 )
+
+/** What the step counter needs from the user, shown at the top of Home. Only one at a time, most urgent first. */
+enum class StepsNotice { None, NeedsPermission, PermissionBlocked, NoSensor, BatteryTip }
 
 @Composable
 fun HomeContent(
@@ -273,6 +320,7 @@ fun HomeContent(
     burst: Boolean,
     onBurstDone: () -> Unit,
     a: HomeActions,
+    notice: StepsNotice = StepsNotice.None,
 ) {
     val header: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -285,6 +333,10 @@ fun HomeContent(
             }
             StreakChip(h.flame)
         }
+    }
+
+    val stepsCard: @Composable () -> Unit = {
+        if (!h.demo) StepsNoticeCard(notice, a)
     }
 
     val hero: @Composable () -> Unit = {
@@ -394,6 +446,7 @@ fun HomeContent(
         Row(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 header()
+                stepsCard()
                 hero()
                 stats()
             }
@@ -405,10 +458,46 @@ fun HomeContent(
     } else {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             header()
+            stepsCard()
             hero()
             stats()
             walk()
             details()
+        }
+    }
+}
+
+@Composable
+private fun StepsNoticeCard(n: StepsNotice, a: HomeActions) {
+    if (n == StepsNotice.None) return
+    val title = when (n) {
+        StepsNotice.NeedsPermission -> "Allow step counting"
+        StepsNotice.PermissionBlocked -> "Step counting is switched off"
+        StepsNotice.NoSensor -> "No step sensor on this phone"
+        else -> "Keep counting when the app is closed"
+    }
+    val body = when (n) {
+        StepsNotice.NeedsPermission ->
+            "Steps are not counting yet. Android calls this permission physical activity. Walk Buddy reads your phone's built-in step counter all day, even when the app is closed or you are offline. Nothing leaves your phone."
+        StepsNotice.PermissionBlocked ->
+            "Android is no longer showing the permission prompt. Open the app settings, choose Permissions, then Physical activity, and select Allow. Steps taken meanwhile are not lost once it is on."
+        StepsNotice.NoSensor ->
+            "This phone reports no step counter, step detector or motion sensor, so steps cannot be counted here. Walks still measure distance with GPS."
+        else ->
+            "Some phones stop background apps to save battery. If your steps stop adding up while the app is closed, let Walk Buddy run in the background. It only opens a settings screen; nothing changes unless you choose it."
+    }
+    SectionCard(title) {
+        Text(body, style = MaterialTheme.typography.bodyMedium)
+        when (n) {
+            StepsNotice.NeedsPermission ->
+                Button(onClick = a.onAllowSteps, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Allow step counting") }
+            StepsNotice.PermissionBlocked ->
+                Button(onClick = a.onOpenAppSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Open app settings") }
+            StepsNotice.BatteryTip -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = a.onBatterySettings, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Battery settings", textAlign = TextAlign.Center) }
+                TextButton(onClick = a.onDismissBatteryTip, modifier = Modifier.heightIn(min = 48.dp)) { Text("Not now") }
+            }
+            else -> Unit
         }
     }
 }

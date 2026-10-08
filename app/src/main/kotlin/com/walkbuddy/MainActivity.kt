@@ -35,6 +35,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.onForeground(true)
+    }
+
+    override fun onStop() {
+        viewModel.onForeground(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         viewModel.onResume()

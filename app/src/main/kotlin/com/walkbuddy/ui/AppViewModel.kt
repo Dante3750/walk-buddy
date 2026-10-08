@@ -62,6 +62,7 @@ import com.walkbuddy.session.CreateGroupOptions
 import com.walkbuddy.session.GroupUi
 import com.walkbuddy.session.SessionUi
 import com.walkbuddy.session.WalkService
+import com.walkbuddy.steps.StepTracking
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
@@ -373,6 +374,32 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     private val isDemo: Boolean get() = demo.value != null
 
     fun onResume() { clockTick.update { it + 1 } }
+
+    // ---- always-on step counting ----
+
+    val stepKind get() = c.steps.kind
+    val stepsNeedPermission get() = c.steps.needsPermission
+    val stepsListening: StateFlow<Boolean> = c.steps.listening
+    val stepsLastSample: StateFlow<Long?> = c.steps.lastSampleMs.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val stepsRegisterOk get() = c.steps.registerOk
+
+    /**
+     * App on screen: hold a listener of our own (so the hero counts live even if Android would not start the service), deliver
+     * events immediately instead of batched, catch up with one reading, and make sure the all-day service and safety nets are alive.
+     */
+    fun onForeground(on: Boolean) {
+        if (on) {
+            c.steps.acquire("ui")
+            c.steps.setInteractive(true)
+            StepTracking.ensureRunning(appContext)
+            viewModelScope.launch { c.steps.sampleNow() }
+        } else {
+            c.steps.setInteractive(false)
+            c.steps.release("ui")
+        }
+    }
+
+    fun stepsPermissionGranted() = StepTracking.onPermissionGranted(appContext)
 
     fun startLobby(codeOrLink: String?, solo: Boolean = false) {
         c.session.openLobby(codeOrLink, solo)

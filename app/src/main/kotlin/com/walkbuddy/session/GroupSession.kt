@@ -38,7 +38,6 @@ import com.walkbuddy.notify.Notifications
 import com.walkbuddy.rtc.GroupClient
 import com.walkbuddy.rtc.SignalingState
 import com.walkbuddy.sensors.LocationSource
-import com.walkbuddy.sensors.StepSource
 import java.security.SecureRandom
 import kotlin.math.cos
 import kotlin.math.sin
@@ -110,7 +109,6 @@ class GroupSession(
     private val repo: AppRepository,
     private val settingsStore: SettingsStore,
     private val steps: StepRecorder,
-    private val stepSource: StepSource,
     private val locationSource: LocationSource,
     private val health: HealthBridge,
     private val routes: RouteStore,
@@ -321,7 +319,6 @@ class GroupSession(
         walkStartMs = now
         val e = GroupEngine(selfId, nickname, walkConfig(gs.goalSteps), now)
         engine = e
-        scope.launch { steps.recordIdle(now) }
         walkJobs += scope.launch {
             locationSource.fixes().collect { fix ->
                 e.onSelfFix(fix)
@@ -329,10 +326,15 @@ class GroupSession(
             }
         }
         walkJobs += scope.launch {
-            stepSource.readings().collect { counter ->
-                val t = System.currentTimeMillis()
-                val d = e.onSelfSteps(t, counter)
-                steps.recordWalkDelta(t, counter, d)
+            // Same feed as the all-day counter; the walk never writes daily steps itself, so nothing is counted twice.
+            steps.acquire("group")
+            try {
+                val start = steps.sampleNow() // also credits the steps before the walk to the day
+                start?.let { e.onSelfSteps(it.baseline.tMs, it.baseline.counter) }
+                val from = start?.baseline?.tMs ?: now
+                steps.live.collect { r -> if (r.wallMs >= from) e.onSelfSteps(r.wallMs, r.counter) }
+            } finally {
+                steps.release("group")
             }
         }
         walkJobs += scope.launch { tickLoop(e) }
@@ -346,7 +348,6 @@ class GroupSession(
             val st = e.tick(now)
             n++
             if (n % 3 == 0) sendUpdateNow()
-            if (n % 30 == 0) steps.persistBaseline()
             _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps) }
             st.nudge?.let { showBanner(it.text, nudge = true) }
             if (st.goal.reached && !goalCelebrated && st.goal.goal > 0) {
@@ -457,7 +458,6 @@ class GroupSession(
             val now = System.currentTimeMillis()
             val summary = e.finish(now)
             val groupSteps = _ui.value.groupSteps
-            steps.persistBaseline()
             var walkId: Long? = null
             if (summary.durationMs >= 20_000) {
                 // Saved like a solo walk, so a group never counts as a couple walk in "Our week" or the couple odometer.

@@ -51,6 +51,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.walkbuddy.health.HealthBridges
 import com.walkbuddy.notify.PeriodicSampler
+import com.walkbuddy.domain.StepHealth
+import com.walkbuddy.domain.StepSensorKind
+import com.walkbuddy.steps.StepService
+import com.walkbuddy.steps.StepTracking
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.walkbuddy.ui.rememberPermState
+import kotlinx.coroutines.delay
 import com.walkbuddy.ui.AppViewModel
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
@@ -72,6 +81,20 @@ class SettingsActions(
     val routes: () -> List<com.walkbuddy.data.RouteInfo> = { emptyList() },
     val onShareRoute: (String) -> Unit = {},
     val onDeleteRoute: (String) -> Unit = {},
+    val onOpenAppSettings: () -> Unit = {},
+    val onBatterySettings: () -> Unit = {},
+    val onOpenDontKillMyApp: () -> Unit = {},
+)
+
+/** Everything the "Step counting health" row shows, already turned into words. */
+class StepHealthUi(
+    val permission: String,
+    val sensor: String,
+    val lastSample: String,
+    val service: String,
+    val battery: String,
+    val permissionOk: Boolean,
+    val batteryOk: Boolean,
 )
 
 @Composable
@@ -88,7 +111,44 @@ fun SettingsScreen(vm: AppViewModel) {
             Toast.makeText(ctx, if (ok) "Exported" else "Could not write the file", Toast.LENGTH_SHORT).show()
         }
     }
+    val perms = rememberPermState()
+    var tick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // The row is a live check: refresh it every couple of seconds and whenever the user comes back from a system settings page.
+    LaunchedEffect(Unit) { while (true) { delay(2_000); tick = System.currentTimeMillis() } }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { perms.refresh(); tick = System.currentTimeMillis() }
+    val lastSample by vm.stepsLastSample.collectAsStateWithLifecycle()
+    val stepHealth = run {
+        val granted = perms.activity
+        val kind = vm.stepKind
+        val ignoring = tick > 0 && StepTracking.ignoringBatteryOptimizations(ctx)
+        StepHealthUi(
+            permission = when {
+                kind == StepSensorKind.Accelerometer -> "Not needed for the motion sensor"
+                !vm.stepsNeedPermission -> "Not needed on this Android version"
+                granted -> "Allowed"
+                else -> "Not allowed, steps cannot be counted"
+            },
+            sensor = when (kind) {
+                StepSensorKind.Counter -> "Built-in step counter (keeps counting while the app is closed)"
+                StepSensorKind.Detector -> "Step detector (counts only while Walk Buddy is running)"
+                StepSensorKind.Accelerometer -> "Motion sensor, approximate (counts only while the phone is awake)"
+                null -> "None found on this phone"
+            },
+            lastSample = StepHealth.ago(tick, lastSample),
+            service = when {
+                StepService.running -> "Running"
+                !granted && vm.stepsNeedPermission -> "Not running, waiting for permission"
+                else -> "Not running right now (a safety check reads the counter every ~15 min)"
+            },
+            battery = if (ignoring) "Unrestricted" else "Optimised, Android may stop counting in the background",
+            permissionOk = granted || !vm.stepsNeedPermission,
+            batteryOk = ignoring,
+        )
+    }
     val actions = SettingsActions(
+        onOpenAppSettings = { StepTracking.openAppSettings(ctx) },
+        onBatterySettings = { StepTracking.openBatterySettings(ctx) },
+        onOpenDontKillMyApp = { openOrToast(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://dontkillmyapp.com/"))) },
         save = { vm.saveSettings(it) },
         setDemoMode = { vm.setDemoMode(it) },
         calibrate = { done -> vm.calibrateStepLength(done) },
@@ -109,17 +169,22 @@ fun SettingsScreen(vm: AppViewModel) {
         },
         onDeleteRoute = { vm.deleteRoute(it) },
     )
-    SettingsContent(settings, actions)
+    SettingsContent(settings, actions, stepHealth)
+}
+
+private fun openOrToast(ctx: android.content.Context, i: Intent) {
+    try { ctx.startActivity(i) } catch (_: ActivityNotFoundException) { Toast.makeText(ctx, "Nothing on this phone can open that", Toast.LENGTH_SHORT).show() }
 }
 
 @Composable
-fun SettingsContent(s: Settings?, a: SettingsActions) {
+fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? = null) {
     if (s == null) {
         EmptyState("Loading", "One moment.")
         return
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle("Settings")
+        if (stepHealth != null) StepHealthSection(stepHealth, a)
         AppearanceSection(a, s)
         ProfileSection(a, s)
         GoalSection(a, s)
@@ -137,6 +202,31 @@ fun SettingsContent(s: Settings?, a: SettingsActions) {
             Text(Copy.LOCAL_ONLY)
             Disclaimer("Walk Buddy has no accounts, no analytics, no ads, and never uses the microphone. The camera is used only on the QR scan screen, and nothing it sees is saved.")
         }
+    }
+}
+
+@Composable
+private fun StepHealthSection(h: StepHealthUi, a: SettingsActions) {
+    SectionCard("Step counting health") {
+        HealthLine("Permission", h.permission, h.permissionOk)
+        HealthLine("Step sensor", h.sensor, true)
+        HealthLine("Last step reading", h.lastSample, true)
+        HealthLine("Counting service", h.service, true)
+        HealthLine("Battery", h.battery, h.batteryOk)
+        Disclaimer("Steps are read from the phone's own counter and saved on this phone as they happen. No internet is involved.")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!h.permissionOk) OutlinedButton(onClick = a.onOpenAppSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("App settings") }
+            if (!h.batteryOk) OutlinedButton(onClick = a.onBatterySettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("Battery settings") }
+            TextButton(onClick = a.onOpenDontKillMyApp, modifier = Modifier.heightIn(min = 48.dp)) { Text("Steps stop? dontkillmyapp.com") }
+        }
+    }
+}
+
+@Composable
+private fun HealthLine(label: String, value: String, ok: Boolean) {
+    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}.padding(vertical = 2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = if (ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
     }
 }
 
@@ -369,7 +459,7 @@ private fun QuietHoursSection(a: SettingsActions, s: Settings) {
 @Composable
 private fun DemoSection(a: SettingsActions, s: Settings) {
     SectionCard("Demo mode") {
-        ToggleRow("Show demo data", "Sample steps, badges and a pretend buddy named Sam. Works with no permissions and saves nothing. Your real data is untouched.", s.demoMode) { on -> a.setDemoMode(on) }
+        ToggleRow("Show demo data", "Sample steps, badges and a pretend buddy named Sam. Works with no permissions and shows no real data. Your real steps keep counting quietly in the background.", s.demoMode) { on -> a.setDemoMode(on) }
     }
 }
 

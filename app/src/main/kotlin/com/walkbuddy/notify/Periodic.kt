@@ -13,6 +13,9 @@ import com.walkbuddy.domain.AnniversaryCountdown
 import com.walkbuddy.domain.ReminderPlanner
 import com.walkbuddy.domain.SitAction
 import com.walkbuddy.domain.SittingMonitor
+import com.walkbuddy.steps.StepService
+import com.walkbuddy.steps.StepTracking
+import com.walkbuddy.steps.StepWidgetSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,15 +57,6 @@ class PeriodicReceiver : BroadcastReceiver() {
         }
     }
 
-    /** Keeps the home-screen widget fresh even when the app is closed. */
-    private suspend fun publishWidget(c: com.walkbuddy.AppContainer, s: com.walkbuddy.data.Settings, now: Long) {
-        if (s.demoMode) return
-        val history = c.repository.allDays()
-        val day = Clock.epochDay(now)
-        val steps = history.firstOrNull { it.epochDay == day }?.verifiedSteps ?: 0
-        WidgetBridge.publish(c.appContext, steps, Goals.goalFor(day, history, s), s.displayName)
-    }
-
     /** Anniversary and walk-date reminders: each fires once, and never during quiet hours. */
     private suspend fun sendDueReminders(c: com.walkbuddy.AppContainer, s: com.walkbuddy.data.Settings, now: Long) {
         val anniv = AnniversaryCountdown.parse(s.anniversaryDate)?.let { it to s.anniversaryLabel }
@@ -77,26 +71,48 @@ class PeriodicReceiver : BroadcastReceiver() {
     private suspend fun sample(app: WalkBuddyApplication) {
         val c = app.container
         val s = c.settings.current()
-        if (!s.onboardingDone) return
-        if (c.session.sessionActive) return // a walk is recording steps itself
         val now = System.currentTimeMillis()
+        // Steps first, whatever else is going on: the hardware counter kept counting while we were dead, so read it and store the delta.
+        // (A walk reads the same feed, so there is nothing to skip while one is running.)
         val delta = c.steps.recordIdle(now)
-        publishWidget(c, s, now)
+        // The service stores steps continuously, so "steps since the last check" comes from today's total, not from the delta above.
+        val day = Clock.epochDay(now)
+        val total = c.repository.day(day)?.verifiedSteps ?: 0
+        val sit = app.getSharedPreferences("wb_steps", Context.MODE_PRIVATE)
+        val sinceLast = if (sit.getLong("sit_day", -1) == day) total - sit.getInt("sit_steps", total) else total
+        sit.edit().putLong("sit_day", day).putInt("sit_steps", total).apply()
+        runCatching { StepWidgetSync.publish(c) }
+        if (!StepService.running) StepTracking.startService(app)
+        if (!s.onboardingDone) return
         sendDueReminders(c, s, now)
         if (delta == null || !s.sittingReminders) return
         if (s.quietHours.isQuiet(Clock.hourOfDay(now))) return
         val monitor = SittingMonitor()
         c.settings.sitState()?.let { monitor.restore(it) }
         // Moving = enough steps since the last ~15 minute sample to count as getting up.
-        val moving = delta.verified >= 120
+        val moving = sinceLast >= 120
         val action = if (moving) { monitor.markBreak(now); null } else monitor.onSample(now, false, Clock.hourOfDay(now))
         c.settings.saveSitState(monitor.snapshot())
         if (action is SitAction.Remind) Notifications.reminder(app, "Time to stretch your legs", action.text)
     }
 }
 
+/**
+ * After a reboot or an app update: re-arm the safety nets and try to start the step service. Android 12+ may refuse
+ * a foreground start from here (especially after an update); that is tolerated and the safety nets keep reading the counter.
+ * After a reboot the hardware counter restarted from zero; StepLedger detects that and counts the new value as the delta.
+ */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        PeriodicSampler.schedule(context)
+        StepTracking.ensureRunning(context)
+        val app = context.applicationContext as? WalkBuddyApplication ?: return
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            try {
+                withTimeoutOrNull(8_000) { app.container.steps.sampleNow() }
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }
