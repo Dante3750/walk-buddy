@@ -1,5 +1,16 @@
 # Changelog
 
+## alpha 1.4 (1.4.0-alpha)
+
+- Home: the two ways to walk are now distinct cards, each with a coloured header band (title, tagline, person glyphs) over the explanation and actions, under a "Walk together" heading.
+- Group screens: initial avatars (up to two letters, stable colour per person) on the roster, tonal tags for host, role and "a little apart", a status pill in the header, invite code shown as six tiles, a "Leave group" button that is not styled like "End walk", a connecting indicator while waiting.
+- Group goal: one segmented bar made of every member's steps, so the group visibly adds up with no ranking; group totals and together score count up.
+- Progress bars ease to their value and counts animate; both snap when reduce-motion is on.
+- Create-group screen: goal chips scroll instead of clipping on narrow phones; cards fade in.
+- New shared components: `Avatar`, `PersonDot`, `StatusPill`, `TagChip`, `ModeCard`, `SegmentedProgress`, `AnimatedCount`.
+- README rewritten as a landing page. Docs screenshots are still the alpha 1.2 images (the CI artifact needs a signed-in download), and the README says so.
+- No behaviour, protocol or data changes. Domain tests 284, server tests 49.
+
 ## alpha 1.3 (1.3.0-alpha)
 
 - Two modes on the home screen: **Walk with partner** (couple mode, unchanged) and **Open group walk** (up to about 50 people).
