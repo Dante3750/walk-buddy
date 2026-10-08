@@ -85,6 +85,9 @@ class WalkEngine(
 
     val peerIds: List<String> get() = peers.keys.toList()
 
+    /** My latest accepted position (exact, never blurred); null until the first good fix. */
+    val myPosition: LatLon? get() = distance.lastAccepted?.pos
+
     /** Apply new settings mid-walk (radius, quiet mode, pace-sync...). Counters keep their history. */
     fun updateConfig(c: WalkConfig) {
         val radiusChanged = c.radiusM != config.radiusM
@@ -138,7 +141,7 @@ class WalkEngine(
             is PeerMessage.Ping -> if (pingIn.tryAcquire(nowMs)) pendingPings.addLast(p.name)
             is PeerMessage.Spot -> pendingSpots.addLast(p.name to FavoriteSpot(msg.name, msg.lat, msg.lon))
             PeerMessage.Bye -> { p.left = true; p.pos = null }
-            is PeerMessage.React, is PeerMessage.Daily, is PeerMessage.Unknown -> Unit
+            is PeerMessage.React, is PeerMessage.Daily, is PeerMessage.Pin, PeerMessage.Unpin, is PeerMessage.Unknown -> Unit
         }
     }
 

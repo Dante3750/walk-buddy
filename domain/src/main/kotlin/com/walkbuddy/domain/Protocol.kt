@@ -87,6 +87,11 @@ sealed class PeerMessage {
     /** My steps today and my goal, so a buddy's avatar can sit at the right place on their ring. */
     data class Daily(val steps: Int, val goal: Int) : PeerMessage() { override val type get() = "day" }
 
+    /** A meeting-point pin shared with the partner (or cleared with [Unpin]). */
+    data class Pin(val lat: Double, val lon: Double, val label: String) : PeerMessage() { override val type get() = "pin" }
+
+    object Unpin : PeerMessage() { override val type get() = "unpin" }
+
     object Bye : PeerMessage() { override val type get() = "bye" }
 
     /** A well-formed message of a type this version does not know (forward compatibility). */
@@ -128,6 +133,8 @@ object MessageCodec {
                 is PeerMessage.Spot -> { put("name", m.name); put("lat", m.lat); put("lon", m.lon) }
                 is PeerMessage.React -> put("id", m.id)
                 is PeerMessage.Daily -> { put("steps", m.steps); put("goal", m.goal) }
+                is PeerMessage.Pin -> { put("lat", m.lat); put("lon", m.lon); put("name", m.label) }
+                PeerMessage.Unpin -> Unit
                 PeerMessage.Bye -> Unit
                 is PeerMessage.Unknown -> Unit
             }
@@ -187,6 +194,12 @@ object MessageCodec {
                 if (steps !in 0..300_000 || goal !in 500..100_000) return DecodeResult.Rejected("bad daily")
                 DecodeResult.Ok(PeerMessage.Daily(steps, goal))
             }
+            "pin" -> {
+                val lat = o.dbl("lat"); val lon = o.dbl("lon")
+                if (lat == null || lon == null || !LatLon(lat, lon).isValid) return DecodeResult.Rejected("bad pin")
+                DecodeResult.Ok(PeerMessage.Pin(lat, lon, cleanName(o.str("name"), MAX_SPOT_NAME).orEmpty()))
+            }
+            "unpin" -> DecodeResult.Ok(PeerMessage.Unpin)
             "bye" -> DecodeResult.Ok(PeerMessage.Bye)
             else -> DecodeResult.Ok(PeerMessage.Unknown(t))
         }
