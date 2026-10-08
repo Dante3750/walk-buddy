@@ -1,0 +1,12 @@
+# One-click deploy: https://render.com/deploy?repo=https://github.com/Dante3750/walk-buddy
+services:
+  - type: web
+    name: walk-buddy-server
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: TRUST_PROXY
+        value: "1"

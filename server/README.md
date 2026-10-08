@@ -31,6 +31,15 @@ npm test             # 49 tests with real WebSocket clients
 Environment: `PORT`, `HOST`, `TRUST_PROXY=1` (use `X-Forwarded-For` for per-IP limits behind a reverse proxy),
 `ROOM_TTL_MS`, `IDLE_TTL_MS`, `PUBLIC_URL` (for example `wss://walk.example.org`, used by the invite landing page), `MAX_GROUP_MEMBERS` (default 50).
 
+### Free hosting (Render, no tunnel needed)
+
+1. Open https://render.com/deploy?repo=https://github.com/Dante3750/walk-buddy and sign in with GitHub.
+2. Accept the blueprint (`render.yaml`, free plan). Wait for the first deploy to finish.
+3. Your server is `https://walk-buddy-server-XXXX.onrender.com`. In the app use the same address with `wss://`
+   in Settings > Signaling server, then tap Test connection.
+
+The free plan sleeps after ~15 min idle, so the first connection after a break can take ~30 s.
+
 ### Docker
 
 ```bash
