@@ -11,6 +11,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.walkbuddy.WalkBuddyApplication
 import com.walkbuddy.domain.Format
+import com.walkbuddy.notify.LiveUpdate
 import com.walkbuddy.notify.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,8 @@ class WalkService : Service() {
         job?.cancel()
         job = scope.launch {
             var lastText = ""
+            var lastAt = 0L
+            val widgetPrefs = getSharedPreferences("wb_widget", Context.MODE_PRIVATE)
             session.ui.collect { ui ->
                 if (ui.phase == Phase.Idle || ui.phase == Phase.Summary) {
                     ServiceCompat.stopForeground(this@WalkService, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -62,10 +65,17 @@ class WalkService : Service() {
                         if (w == null) "Walking" else "Walking, ${Format.distance(w.myDistanceM)}"
                     }
                 }
-                if (text != lastText) {
+                val now = System.currentTimeMillis()
+                val w = ui.walk
+                val live = ui.phase == Phase.Walking && w != null && LiveUpdate.supported()
+                if (text != lastText || (live && now - lastAt >= 5_000)) {
                     lastText = text
+                    lastAt = now
+                    val goal = widgetPrefs.getInt("goal", 6000).coerceAtLeast(500)
+                    val steps = w?.myVerifiedSteps?.toInt() ?: 0
+                    val pct = if (live) (steps * 100L / goal).toInt().coerceIn(0, 100) else null
                     val nm = getSystemService(android.app.NotificationManager::class.java)
-                    nm?.notify(Notifications.ID_WALK, Notifications.walkOngoing(this@WalkService, text, stop))
+                    nm?.notify(Notifications.ID_WALK, Notifications.walkOngoing(this@WalkService, text, stop, pct, if (live) "%,d".format(steps) else null))
                 }
             }
         }

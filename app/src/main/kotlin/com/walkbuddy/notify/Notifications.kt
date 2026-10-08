@@ -48,16 +48,17 @@ object Notifications {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-    fun walkOngoing(context: Context, text: String, stopIntent: PendingIntent?): Notification {
+    fun walkOngoing(context: Context, text: String, stopIntent: PendingIntent?, percent: Int? = null, shortText: String? = null): Notification {
         val b = NotificationCompat.Builder(context, CH_WALK)
             .setSmallIcon(R.drawable.ic_stat_walk)
-            .setContentTitle("Walk Buddy")
+            .setContentTitle(context.getString(R.string.notif_title))
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openApp(context))
-        if (stopIntent != null) b.addAction(0, "End walk", stopIntent)
-        return b.build()
+        if (stopIntent != null) b.addAction(0, context.getString(R.string.notif_end_walk), stopIntent)
+        val n = b.build()
+        return if (percent != null) LiveUpdate.style(context, n, percent, shortText) else n
     }
 
     private fun canPost(context: Context): Boolean =
