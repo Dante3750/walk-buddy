@@ -111,6 +111,7 @@ fun HomeScreen(
     onScan: () -> Unit = {},
     onCreateGroup: () -> Unit = {},
     onJoinGroup: () -> Unit = {},
+    onHistory: () -> Unit = {},
 ) {
     val home by vm.home.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -226,6 +227,7 @@ fun HomeScreen(
             onScan = onScan,
             onCreateGroup = onCreateGroup,
             onJoinGroup = onJoinGroup,
+            onHistory = onHistory,
             onDemoGroup = { vm.startDemoGroup() },
             onUseRealData = { vm.setDemoMode(false) },
         ),
@@ -306,6 +308,7 @@ class HomeActions(
     val onOpenAppSettings: () -> Unit = {},
     val onBatterySettings: () -> Unit = {},
     val onDismissBatteryTip: () -> Unit = {},
+    val onHistory: () -> Unit = {},
 )
 
 /** What the step counter needs from the user, shown at the top of Home. Only one at a time, most urgent first. */
@@ -372,11 +375,11 @@ fun HomeContent(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Walk together", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 4.dp).semantics { heading() })
             ModeCard(
-                title = "Walk with partner", tagline = "2 people  ·  phone to phone, private",
+                title = "Walk with partner", tagline = "2 people  ·  direct when possible, private",
                 gradient = listOf(Color(0xFFC2305F), Color(0xFF5E1D55)),
                 glyphs = listOf(Color(0xFFE0557E), Color(0xFF8E3A8A)),
             ) {
-                Text("A private link between two phones. A tiny server only introduces you; your steps and location go phone to phone.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Your phones connect directly whenever the network allows. If it does not, the tiny server passes your small updates along without storing or logging them.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
                     Text("Start a walk together", style = MaterialTheme.typography.titleMedium)
                 }
@@ -398,6 +401,7 @@ fun HomeContent(
                 if (h.demo) OutlinedButton(onClick = a.onDemoGroup, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Try a demo group walk") }
             }
             FilledTonalButton(onClick = a.onSolo, colors = tonalColors(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walk solo") }
+            OutlinedButton(onClick = a.onHistory, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walks together (history)") }
             if (!locationGranted) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
         }
     }

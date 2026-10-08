@@ -86,6 +86,7 @@ class SettingsActions(
     val onOpenAppSettings: () -> Unit = {},
     val onBatterySettings: () -> Unit = {},
     val onOpenDontKillMyApp: () -> Unit = {},
+    val onOpenHistory: () -> Unit = {},
 )
 
 /** Everything the "Step counting health" row shows, already turned into words. */
@@ -100,7 +101,7 @@ class StepHealthUi(
 )
 
 @Composable
-fun SettingsScreen(vm: AppViewModel) {
+fun SettingsScreen(vm: AppViewModel, onOpenHistory: () -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -154,6 +155,7 @@ fun SettingsScreen(vm: AppViewModel) {
         )
     }
     val actions = SettingsActions(
+        onOpenHistory = onOpenHistory,
         onOpenAppSettings = { StepTracking.openAppSettings(ctx) },
         onBatterySettings = { StepTracking.openBatterySettings(ctx) },
         onOpenDontKillMyApp = { openOrToast(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://dontkillmyapp.com/"))) },
@@ -340,6 +342,9 @@ private fun GoalSection(a: SettingsActions, s: Settings) {
 private fun WalkSection(a: SettingsActions, s: Settings) {
     var radius by remember(s.radiusM) { mutableStateOf(s.radiusM.toFloat()) }
     SectionCard("Walking together") {
+        Text("Your walker on the Track", style = MaterialTheme.typography.titleSmall)
+        com.walkbuddy.ui.components.AvatarPicker(s.avatar) { av -> a.save { setAvatar(av) } }
+        androidx.compose.material3.OutlinedButton(onClick = a.onOpenHistory, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walks together (history)") }
         Text("Together radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
         Slider(
             value = radius, onValueChange = { radius = it }, valueRange = 20f..200f,

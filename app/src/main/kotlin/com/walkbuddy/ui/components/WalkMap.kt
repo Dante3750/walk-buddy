@@ -117,6 +117,9 @@ fun WalkMap(
     onClearPin: () -> Unit,
     modifier: Modifier = Modifier,
     initialFollow: MapFollow = MapFollow.Group,
+    /** Why my own position may be missing, with the one button that fixes it. Null when all is well. */
+    notice: com.walkbuddy.domain.LocationNotice? = null,
+    onNoticeAction: (com.walkbuddy.domain.LocationAction) -> Unit = {},
 ) {
     val measurer = rememberTextMeasurer()
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -192,7 +195,9 @@ fun WalkMap(
             if (tilesEnabled) drawAttribution(ink, panel, measurer)
         }
 
-        if (located == 0) {
+        if (notice != null) {
+            LocationNoticeCard(notice, onNoticeAction, Modifier.align(Alignment.BottomCenter).padding(12.dp))
+        } else if (located == 0) {
             Surface(Modifier.align(Alignment.Center).padding(24.dp), shape = RoundedCornerShape(16.dp), color = panel) {
                 Text("Waiting for a location fix. Stepping outside helps.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
@@ -217,7 +222,7 @@ fun WalkMap(
                 FilterChip(selected = false, onClick = onClearPin, label = { Text("Clear pin") }, modifier = Modifier.heightIn(min = 48.dp))
             }
         }
-        if (canPin && pin == null && located > 0) {
+        if (canPin && pin == null && located > 0 && notice == null) {
             Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp), shape = RoundedCornerShape(16.dp), color = panel) {
                 Text("Press and hold the map to set a meeting point", Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
             }

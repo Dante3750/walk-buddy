@@ -42,6 +42,10 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.domain.Hero
+import com.walkbuddy.domain.LocationStatus
+import com.walkbuddy.domain.LocationStatusLogic
+import com.walkbuddy.domain.TrackBuilders
+import androidx.compose.foundation.layout.height
 import com.walkbuddy.domain.Reaction
 import com.walkbuddy.domain.Units
 import com.walkbuddy.share.ShareCard
@@ -95,6 +99,8 @@ class WalkActions(
     val onRateLimited: () -> Unit = {},
     val onSetPin: (com.walkbuddy.domain.LatLon) -> Unit = {},
     val onClearPin: () -> Unit = {},
+    val onLocationAction: (com.walkbuddy.domain.LocationAction) -> Unit = {},
+    val onAvatar: (com.walkbuddy.domain.Avatar) -> Unit = {},
 )
 
 /** Full-screen flow shown whenever a session is not idle: lobby, live walk, summary. */
@@ -105,7 +111,11 @@ fun WalkFlow(vm: AppViewModel, ui: SessionUi) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val unit = settings?.unitSystem ?: com.walkbuddy.domain.UnitSystem.Metric
     val wide = com.walkbuddy.ui.rememberWidthClass() != com.walkbuddy.ui.WidthClass.Compact
+    val power by vm.powerState.collectAsStateWithLifecycle()
+    val locationAction = com.walkbuddy.ui.rememberLocationNoticeHandler { vm.locationAvailable() }
     val a = WalkActions(
+        onLocationAction = locationAction,
+        onAvatar = { vm.setAvatar(it) },
         onStartWalking = { vm.startWalking() },
         onLeave = { vm.leaveLobby() },
         onQuiet = { vm.setQuiet(it) },
@@ -141,7 +151,7 @@ fun WalkFlow(vm: AppViewModel, ui: SessionUi) {
     Column(Modifier.fillMaxSize()) {
         when (ui.phase) {
             Phase.Lobby -> LobbyContent(ui, a)
-            Phase.Walking -> LiveContent(ui, home?.verifiedSteps, home?.goal, unit, wide, a, tilesEnabled = settings?.mapTiles == true)
+            Phase.Walking -> LiveContent(ui, home?.verifiedSteps, home?.goal, unit, wide, a, tilesEnabled = settings?.mapTiles == true, lowPower = power.systemBatterySaver || power.userBatterySaver)
             Phase.Summary -> SummaryContent(ui, a)
             Phase.Idle -> Unit
         }
@@ -212,6 +222,13 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
             ui.note?.let { Text(it) }
         }
 
+        if (!ui.solo) {
+            SectionCard("Your walker") {
+                Text("This is how you look on the Track. Your buddy sees it too.", style = MaterialTheme.typography.bodyMedium)
+                com.walkbuddy.ui.components.AvatarPicker(ui.myAvatar, a.onAvatar)
+            }
+        }
+
         ToggleRow("Quiet mode", "Mute all nudges for this walk", ui.quiet) { a.onQuiet(it) }
 
         Button(onClick = a.onStartWalking, modifier = Modifier.fillMaxWidth()) { Text("Start walking") }
@@ -220,23 +237,28 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
     }
 }
 
-/** Overview or Map, for a walk with a partner. The map is the same one the open group walk uses. */
+/** Track (the default big picture), Map or Overview, for a walk with a partner. The map is the same one the open group walk uses. */
 @Composable
 fun LiveContent(
     ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions,
-    tilesEnabled: Boolean = false,
+    tilesEnabled: Boolean = false, lowPower: Boolean = false,
 ) {
     var confirmEnd by remember { mutableStateOf(false) }
+    // 0 Track, 1 Map, 2 Overview. Kept across rotation.
     var view by rememberSaveable { mutableIntStateOf(0) }
     val w = ui.walk
-    if (w != null && view == 1) {
+    val header: @Composable () -> Unit = { LiveHeader(view, ui, a) { view = it } }
+    if (w != null && view == 0) {
+        TrackLive(ui, w, unit, a, lowPower, header, onAskEnd = { confirmEnd = true })
+    } else if (w != null && view == 1) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ViewSwitch(view) { view = it }
+            header()
+            LiveAlerts(ui, a)
             PartnerMapView(ui, w, unit, tilesEnabled, a, Modifier.weight(1f).fillMaxWidth())
             Button(onClick = { confirmEnd = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("End walk") }
         }
     } else {
-        LiveOverview(ui, todaySteps, todayGoal, unit, wide, a, switch = { if (w != null) ViewSwitch(view) { view = it } }, onAskEnd = { confirmEnd = true })
+        LiveOverview(ui, todaySteps, todayGoal, unit, wide, a, switch = { if (w != null) header() }, onAskEnd = { confirmEnd = true })
     }
     if (confirmEnd) {
         AlertDialog(
@@ -249,40 +271,33 @@ fun LiveContent(
     }
 }
 
+/** The view switch and the link label. Stacked, so neither gets squeezed on a narrow phone. */
 @Composable
-private fun ViewSwitch(selected: Int, onSelect: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = selected == 0, onClick = { onSelect(0) }, label = { Text("Overview") }, modifier = Modifier.heightIn(min = 48.dp))
-        FilterChip(selected = selected == 1, onClick = { onSelect(1) }, label = { Text("Map") }, modifier = Modifier.heightIn(min = 48.dp))
+private fun LiveHeader(selected: Int, ui: SessionUi, a: WalkActions, onSelect: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        ViewSwitch(selected, onSelect)
+        if (!ui.demo && !ui.solo) com.walkbuddy.ui.components.LinkChip(ui.link)
     }
 }
 
 @Composable
-private fun PartnerMapView(
-    ui: SessionUi, w: com.walkbuddy.domain.WalkState, unit: com.walkbuddy.domain.UnitSystem, tiles: Boolean, a: WalkActions, modifier: Modifier,
-) {
-    val people = listOf(MapPerson("me", "You", w.myPos, ui.trails["me"].orEmpty(), isMe = true)) +
-        w.buddies.map { MapPerson(it.id, it.name, it.pos, ui.trails[it.id].orEmpty(), stale = it.status == BuddyStatus.ConnectionLost) }
-    WalkMap(
-        people = people, pin = ui.pin, tilesEnabled = tiles, imperial = unit == com.walkbuddy.domain.UnitSystem.Imperial,
-        canPin = true, onSetPin = a.onSetPin, onClearPin = a.onClearPin, modifier = modifier,
-        initialFollow = com.walkbuddy.domain.MapFollow.Group,
-    )
+private fun ViewSwitch(selected: Int, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = selected == 0, onClick = { onSelect(0) }, label = { Text("Track") }, modifier = Modifier.heightIn(min = 48.dp))
+        FilterChip(selected = selected == 1, onClick = { onSelect(1) }, label = { Text("Map") }, modifier = Modifier.heightIn(min = 48.dp))
+        FilterChip(selected = selected == 2, onClick = { onSelect(2) }, label = { Text("Overview") }, modifier = Modifier.heightIn(min = 48.dp))
+    }
 }
 
+/** The reaction, the notice banner and (when my own position is missing) the one card that says why and what to tap. */
 @Composable
-private fun LiveOverview(
-    ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions,
-    switch: @Composable () -> Unit, onAskEnd: () -> Unit,
-) {
-    val w = ui.walk
-
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        switch()
-        if (w == null) {
-            EmptyState("Getting ready", "Looking for a GPS fix. Stepping outside helps.")
-            OutlinedButton(onClick = a.onEndWalk, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
-            return@Column
+private fun LiveAlerts(ui: SessionUi, a: WalkActions) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!ui.demo) {
+            LocationStatusLogic.notice(ui.locStatus, ui.locSearchingSec)?.let { n ->
+                // "Finding your position" is only worth a card once it has taken a moment; the others need the person to act.
+                if (n.status != LocationStatus.Searching || ui.locSearchingSec >= 8) com.walkbuddy.ui.components.LocationNoticeCard(n, a.onLocationAction)
+            }
         }
         ui.reaction?.let { r ->
             Card(
@@ -307,6 +322,95 @@ private fun LiveOverview(
                 }
             }
         }
+    }
+}
+
+/** The big visual: two (or more) walkers on parallel lanes along one line, with the gap said in words. */
+@Composable
+private fun TrackLive(
+    ui: SessionUi, w: com.walkbuddy.domain.WalkState, unit: com.walkbuddy.domain.UnitSystem, a: WalkActions, lowPower: Boolean,
+    header: @Composable () -> Unit, onAskEnd: () -> Unit,
+) {
+    val walkers = remember(w, ui.myId, ui.myAvatar) { TrackBuilders.forPartner(w, ui.myId, ui.myAvatar) }
+    val gap = TrackBuilders.partnerGap(w)
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val trackHeight = (maxHeight * 0.42f).coerceIn(240.dp, 420.dp)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            header()
+            LiveAlerts(ui, a)
+            com.walkbuddy.ui.components.TrackView(
+                walkers = walkers, realGapM = gap, unit = unit, lowPower = lowPower,
+                modifier = Modifier.fillMaxWidth().height(trackHeight),
+            )
+            if (w.buddies.isEmpty()) {
+                Disclaimer("Waiting for your buddy to appear. You can keep walking; they will show up on the Track when they join.")
+            }
+            val dist = Units.distanceAmount(w.myDistanceM, unit)
+            StatStrip(
+                listOf(
+                    StatItem("Time", Format.duration(w.elapsedMs)),
+                    StatItem("Distance", dist.value, dist.unit),
+                    StatItem("Steps", Hero.thousands(w.myVerifiedSteps.toInt())),
+                ),
+            )
+            if (w.buddies.isNotEmpty()) {
+                Text(
+                    "Together ${w.together.scorePct}% of this walk. Longest stretch: ${Format.duration(w.together.longestStreakMs)}.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Reaction.values().forEach { r ->
+                        AssistChip(
+                            onClick = { if (!a.onReaction(r)) a.onRateLimited() },
+                            label = { Text(r.emoji + "  " + r.label) },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        )
+                    }
+                }
+            }
+            Button(onClick = onAskEnd, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("End walk") }
+            if (ui.demo) Disclaimer("Demo walk: nothing here is saved.")
+            Disclaimer(Copy.SHARING_ENDS)
+        }
+    }
+}
+
+@Composable
+private fun PartnerMapView(
+    ui: SessionUi, w: com.walkbuddy.domain.WalkState, unit: com.walkbuddy.domain.UnitSystem, tiles: Boolean, a: WalkActions, modifier: Modifier,
+) {
+    // A buddy who went quiet stays on the map at the last place we saw them, faded, instead of vanishing.
+    val people = listOf(MapPerson("me", "You", w.myPos, ui.trails["me"].orEmpty(), isMe = true)) +
+        w.buddies.map {
+            val quiet = it.status == BuddyStatus.ConnectionLost || (it.lastHeardAgoSec ?: 0) >= TrackBuilders.STALE_SEC
+            MapPerson(it.id, it.name, it.pos ?: it.lastPos, ui.trails[it.id].orEmpty(), stale = quiet || it.pos == null)
+        }
+    WalkMap(
+        people = people, pin = ui.pin, tilesEnabled = tiles, imperial = unit == com.walkbuddy.domain.UnitSystem.Imperial,
+        canPin = true, onSetPin = a.onSetPin, onClearPin = a.onClearPin, modifier = modifier,
+        initialFollow = com.walkbuddy.domain.MapFollow.Group,
+        notice = if (ui.demo) null else LocationStatusLogic.notice(ui.locStatus, ui.locSearchingSec), onNoticeAction = a.onLocationAction,
+    )
+}
+
+@Composable
+private fun LiveOverview(
+    ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions,
+    switch: @Composable () -> Unit, onAskEnd: () -> Unit,
+) {
+    val w = ui.walk
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        switch()
+        if (w == null) {
+            EmptyState("Getting ready", "Looking for a GPS fix. Stepping outside helps.")
+            OutlinedButton(onClick = a.onEndWalk, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
+            return@Column
+        }
+        LiveAlerts(ui, a)
 
         // The big number stays central here too: today's steps on the ring, buddies at their own progress.
         val heroSteps = todaySteps ?: w.myVerifiedSteps.toInt()

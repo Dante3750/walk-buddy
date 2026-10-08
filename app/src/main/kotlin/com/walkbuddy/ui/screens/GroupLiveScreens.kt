@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -107,6 +108,7 @@ class GroupActions(
     val onClearPin: () -> Unit = {},
     val onShareInvite: (String) -> Unit = {},
     val onFinish: () -> Unit = {},
+    val onLocationAction: (com.walkbuddy.domain.LocationAction) -> Unit = {},
 )
 
 /** Full-screen flow while an open group walk is on: waiting, live (map, people, invite) and summary. */
@@ -115,7 +117,10 @@ fun GroupFlow(vm: AppViewModel, ui: GroupUi) {
     val ctx = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val unit = settings?.unitSystem ?: UnitSystem.Metric
+    val power by vm.powerState.collectAsStateWithLifecycle()
+    val locationAction = com.walkbuddy.ui.rememberLocationNoticeHandler { vm.locationAvailable() }
     val a = GroupActions(
+        onLocationAction = locationAction,
         onEnd = { vm.groupEnd(it) },
         onCancel = { vm.groupCancel() },
         onDismissBanner = { vm.groupDismissBanner() },
@@ -136,14 +141,14 @@ fun GroupFlow(vm: AppViewModel, ui: GroupUi) {
         onFinish = { vm.groupFinish() },
     )
     when (ui.phase) {
-        GroupPhase.Active -> GroupLiveContent(ui, unit, settings?.mapTiles == true, a)
+        GroupPhase.Active -> GroupLiveContent(ui, unit, settings?.mapTiles == true, a, lowPower = power.systemBatterySaver || power.userBatterySaver)
         GroupPhase.Summary -> GroupSummaryContent(ui, a)
         GroupPhase.Idle -> Unit
     }
 }
 
 @Composable
-fun GroupLiveContent(ui: GroupUi, unit: UnitSystem, tiles: Boolean, a: GroupActions) {
+fun GroupLiveContent(ui: GroupUi, unit: UnitSystem, tiles: Boolean, a: GroupActions, lowPower: Boolean = false) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var confirm by remember { mutableStateOf(false) }
     BackHandler(enabled = true) { confirm = true }
@@ -168,16 +173,24 @@ fun GroupLiveContent(ui: GroupUi, unit: UnitSystem, tiles: Boolean, a: GroupActi
         }
         if (ui.hostAway) Disclaimer("The host is away for a moment. The walk carries on.", Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         ui.note?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        val notice = if (ui.demo) null else com.walkbuddy.domain.LocationStatusLogic.notice(ui.locStatus, ui.locSearchingSec)
+        // "Finding your position" only deserves a card once it has taken a moment; the others need the person to act.
+        val shownNotice = notice?.takeIf { it.status != com.walkbuddy.domain.LocationStatus.Searching || ui.locSearchingSec >= 8 }
+        if (shownNotice != null && tab <= 1) {
+            com.walkbuddy.ui.components.LocationNoticeCard(shownNotice, a.onLocationAction, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+        }
         val missing = ui.requests.size
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Map") }, modifier = Modifier.heightIn(min = 48.dp))
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(if (missing > 0 && ui.iAmHost) "People ($missing new)" else "People") }, modifier = Modifier.heightIn(min = 48.dp))
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Invite") }, modifier = Modifier.heightIn(min = 48.dp))
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Track") }, modifier = Modifier.heightIn(min = 48.dp))
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Map") }, modifier = Modifier.heightIn(min = 48.dp))
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(if (missing > 0 && ui.iAmHost) "People ($missing new)" else "People") }, modifier = Modifier.heightIn(min = 48.dp))
+            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Invite") }, modifier = Modifier.heightIn(min = 48.dp))
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
-                0 -> GroupMapTab(ui, w, unit, tiles, a)
-                1 -> GroupPeopleTab(ui, w, unit, a)
+                0 -> GroupTrackTab(ui, w, unit, lowPower)
+                1 -> GroupMapTab(ui, w, unit, tiles, a)
+                2 -> GroupPeopleTab(ui, w, unit, a)
                 else -> GroupInviteTab(ui, w, a)
             }
         }
@@ -263,6 +276,29 @@ private fun EndDialog(ui: GroupUi, onDismiss: () -> Unit, a: GroupActions) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------
+// Track tab
+// ------------------------------------------------------------------------------------------------------------------
+
+/** Everyone on parallel lanes along one line: who is at the front, who is at the back, and how long the group is. */
+@Composable
+private fun GroupTrackTab(ui: GroupUi, w: GroupState?, unit: UnitSystem, lowPower: Boolean) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (w == null) {
+            EmptyState("Getting ready", "Your walkers appear here as soon as the group starts moving.")
+            return@Column
+        }
+        val walkers = androidx.compose.runtime.remember(w, ui.myAvatar) { com.walkbuddy.domain.TrackBuilders.forGroup(w, "You", ui.myAvatar) }
+        val lanes = minOf(walkers.size, com.walkbuddy.domain.TrackLayout.MAX_LANES)
+        com.walkbuddy.ui.components.TrackView(
+            walkers = walkers, realGapM = null, unit = unit, lowPower = lowPower,
+            modifier = Modifier.fillMaxWidth().height((90 + 62 * lanes).coerceIn(240, 640).dp),
+        )
+        Text(statusLine(ui, w, unit), Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+        if (!ui.sharing) Disclaimer("You are not sharing your location. You can still see the group.")
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------------
 // Map tab
 // ------------------------------------------------------------------------------------------------------------------
 
@@ -270,7 +306,11 @@ private fun EndDialog(ui: GroupUi, onDismiss: () -> Unit, a: GroupActions) {
 fun groupMapPeople(ui: GroupUi, w: GroupState?): List<MapPerson> {
     if (w == null) return emptyList()
     val me = MapPerson(w.selfId, "You", w.myPos, w.trails[w.selfId].orEmpty(), isMe = true, role = w.myRole, apart = w.iAmStraggler)
-    return listOf(me) + w.members.map { MapPerson(it.id, it.name, it.pos, w.trails[it.id].orEmpty(), apart = it.straggler, role = it.role) }
+    // A member who went quiet stays where we last saw them, faded, instead of vanishing from the map.
+    return listOf(me) + w.members.map {
+        val quiet = it.pos == null || (it.lastHeardAgoSec ?: 0) >= com.walkbuddy.domain.TrackBuilders.STALE_SEC
+        MapPerson(it.id, it.name, it.pos ?: it.lastPos, w.trails[it.id].orEmpty(), stale = quiet, apart = it.straggler, role = it.role)
+    }
 }
 
 @Composable
@@ -287,6 +327,7 @@ private fun GroupMapTab(ui: GroupUi, w: GroupState?, unit: UnitSystem, tiles: Bo
             people = groupMapPeople(ui, w), pin = ui.pin, tilesEnabled = tiles, imperial = unit == UnitSystem.Imperial,
             canPin = ui.iAmHost, onSetPin = a.onSetPin, onClearPin = a.onClearPin,
             modifier = Modifier.weight(1f).fillMaxWidth(), initialFollow = MapFollow.Group,
+            notice = null, onNoticeAction = a.onLocationAction,
         )
         if (!ui.sharing) Disclaimer("You are not sharing your location. You can still see the group.")
     }

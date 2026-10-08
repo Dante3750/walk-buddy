@@ -56,6 +56,8 @@ import com.walkbuddy.ui.screens.ScanScreen
 import com.walkbuddy.ui.screens.BadgesScreen
 import com.walkbuddy.ui.screens.CoupleScreen
 import com.walkbuddy.ui.screens.FuelScreen
+import com.walkbuddy.ui.screens.HistoryDetailScreen
+import com.walkbuddy.ui.screens.HistoryScreen
 import com.walkbuddy.ui.screens.HomeScreen
 import com.walkbuddy.ui.screens.OnboardingScreen
 import com.walkbuddy.ui.screens.RecapScreen
@@ -75,6 +77,8 @@ import kotlinx.serialization.Serializable
 @Serializable data object GroupCreateRoute
 @Serializable data class GroupJoinRoute(val initial: String = "")
 @Serializable data object ScanRoute
+@Serializable data object HistoryRoute
+@Serializable data class HistoryDetailRoute(val id: Long)
 
 private class Tab(val route: Any, val label: Int, val glyph: TabGlyph)
 
@@ -114,7 +118,16 @@ fun WalkBuddyApp(vm: AppViewModel) {
             Scaffold { pad -> Box(Modifier.padding(pad)) { GroupFlow(vm, group) } }
         }
         session.phase != Phase.Idle -> {
-            BackHandler(enabled = true) { if (session.phase == Phase.Lobby) vm.leaveLobby() }
+            val activity = remember(ctx) { ctx.findActivity() }
+            // Back never ends a walk by accident: in the lobby it leaves, during the walk it just puts the app away (the walk keeps going).
+            BackHandler(enabled = true) {
+                when (session.phase) {
+                    Phase.Lobby -> vm.leaveLobby()
+                    Phase.Walking -> activity?.moveTaskToBack(true)
+                    Phase.Summary -> vm.finishSummary()
+                    Phase.Idle -> Unit
+                }
+            }
             Scaffold { pad -> Box(Modifier.padding(pad)) { WalkFlow(vm, session) } }
         }
         else -> MainScaffold(vm)
@@ -162,6 +175,7 @@ private fun MainScaffold(vm: AppViewModel) {
                     onScan = { nav.navigate(ScanRoute) },
                     onCreateGroup = { nav.navigate(GroupCreateRoute) },
                     onJoinGroup = { nav.navigate(GroupJoinRoute()) },
+                    onHistory = { nav.navigate(HistoryRoute) { launchSingleTop = true } },
                 )
             }
             composable<GroupCreateRoute> {
@@ -188,7 +202,13 @@ private fun MainScaffold(vm: AppViewModel) {
             }
             composable<FuelRoute> { FuelScreen(vm) }
             composable<UsRoute> { CoupleScreen(vm) }
-            composable<SettingsRoute> { SettingsScreen(vm) }
+            composable<SettingsRoute> { SettingsScreen(vm, onOpenHistory = { nav.navigate(HistoryRoute) { launchSingleTop = true } }) }
+            composable<HistoryRoute> {
+                HistoryScreen(vm, onBack = { nav.popBackStack() }, onOpen = { id -> nav.navigate(HistoryDetailRoute(id)) { launchSingleTop = true } })
+            }
+            composable<HistoryDetailRoute> { e ->
+                HistoryDetailScreen(vm, id = e.toRoute<HistoryDetailRoute>().id, onBack = { nav.popBackStack() })
+            }
             composable<BadgesRoute> { BadgesScreen(vm, onBack = { nav.popBackStack() }) }
             composable<RecapRoute> { RecapScreen(vm, onBack = { nav.popBackStack() }) }
         }
@@ -217,4 +237,10 @@ private fun MainScaffold(vm: AppViewModel) {
 private fun LeaveWhenGroupStarts(vm: AppViewModel, leave: () -> Unit) {
     val group by vm.group.collectAsStateWithLifecycle()
     LaunchedEffect(group.phase) { if (group.phase != GroupPhase.Idle) leave() }
+}
+
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

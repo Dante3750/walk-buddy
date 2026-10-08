@@ -21,8 +21,8 @@ android {
         applicationId = "com.walkbuddy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.7.0-alpha"
+        versionCode = 7
+        versionName = "1.8.0-alpha"
         buildConfigField("boolean", "HEALTH_CONNECT", healthConnectEnabled.toString())
     }
 

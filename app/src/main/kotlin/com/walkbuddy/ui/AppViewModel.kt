@@ -473,6 +473,24 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     fun shareSpot(s: FavoriteSpot) = c.session.shareSpot(s)
     fun acceptSpot(save: Boolean) = c.session.acceptSpotOffer(save)
 
+    // ---- Walks together: the saved history of partner and group walks ----
+
+    private val dbShared = c.repository.sharedWalks.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Newest first. In demo mode sample walks stand in for the real ones. */
+    val sharedWalks: StateFlow<List<com.walkbuddy.domain.SharedWalkRecord>> = combine(dbShared, demo) { d, dm ->
+        if (dm != null) com.walkbuddy.domain.SharedDemo.build(System.currentTimeMillis()) else d
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun deleteSharedWalk(id: Long) { if (!isDemo && id > 0) viewModelScope.launch { c.repository.deleteSharedWalk(id) } }
+    fun clearSharedWalks() { if (!isDemo) viewModelScope.launch { c.repository.clearSharedWalks() } }
+
+    /** My walker on the Track. Sent to buddies as one small number next to my nickname. */
+    fun setAvatar(a: com.walkbuddy.domain.Avatar) = saveSettings { setAvatar(a) }
+
+    /** Location was just allowed or switched on during a walk: start listening for positions again. */
+    fun locationAvailable() { c.session.onLocationAvailable(); c.groupSession.onLocationAvailable() }
+
     fun saveSettings(block: suspend com.walkbuddy.data.SettingsStore.() -> Unit) {
         viewModelScope.launch { c.settings.block() }
     }
