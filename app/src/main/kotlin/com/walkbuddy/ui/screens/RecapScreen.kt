@@ -129,7 +129,7 @@ private fun RecapBackdrop() {
         val w = size.width
         drawCircle(Color.White.copy(alpha = 0.08f), radius = w * 0.55f, center = Offset(w * 0.9f, size.height * 0.14f))
         drawCircle(Color.White.copy(alpha = 0.06f), radius = w * 0.8f, center = Offset(w * 0.05f, size.height * 0.95f))
-        drawCircle(Color.White.copy(alpha = 0.14f), radius = w * 0.46f, center = Offset(w / 2, size.height / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.045f))
+        drawCircle(Color.White.copy(alpha = 0.14f), radius = w * 0.6f, center = Offset(w / 2, size.height / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.035f))
     }
 }
 

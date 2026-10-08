@@ -65,7 +65,7 @@ fun MoodCheckIn(onSave: (mood: Int, note: String) -> Unit, modifier: Modifier = 
             value = note, onValueChange = { note = it.take(MoodNote.MAX) }, singleLine = true,
             label = { Text("One line, if you like") }, modifier = Modifier.fillMaxWidth(),
         )
-        TextButton(enabled = mood != null, onClick = { mood?.let { onSave(it, note) } }) { Text(saveLabel) }
+        androidx.compose.material3.FilledTonalButton(enabled = mood != null, onClick = { mood?.let { onSave(it, note) } }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text(saveLabel) }
         Text("Only on this phone. Your buddy never sees it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

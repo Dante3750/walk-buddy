@@ -372,7 +372,8 @@ fun SummaryContent(ui: SessionUi, a: WalkActions) {
         } else {
             ScreenTitle(card.title, subtitle = "Nicely done.")
             SectionCard("Highlights") {
-                card.lines.forEach { Text(it, style = MaterialTheme.typography.titleMedium) }
+                card.lines.firstOrNull()?.let { Text(it, style = MaterialTheme.typography.headlineSmall) }
+                card.lines.drop(1).forEach { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (s.steps0()) Disclaimer("Raw steps were ${s.rawSteps}; verified steps leave out time in vehicles or at running speed.")
             }
             if (s.nudgesShown > 0) Disclaimer("${s.nudgesShown} gentle nudge(s) during this walk.")
