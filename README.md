@@ -1,233 +1,150 @@
+<div align="center">
+
 # Walk Buddy
 
-[![CI](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml/badge.svg)](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml)
+**Walk together. See each other. Stay side by side.**
 
-A native Android app (Kotlin, Jetpack Compose, Room) for walking **together**, in two modes: **Walk with partner** (the private couple mode, phone to phone) and **Open group walk** (a crowd of up to about 50 on one map). See each other's steps, pace and distance live, notice when you drift apart, and build a gentle daily walking habit. It is about being side by side and healthy habits, not racing: there are no leaderboards and no shaming.
+A native Android app for evening walks with a partner, or an open group of up to about 50, with live steps, pace and a shared map. No accounts, no ads, no analytics.
 
-It was built for a couple who walk together every evening, so a two-person **couple mode** is a first-class part of it, written to feel warm and stay neutral enough for any couple (or friends, or family).
+[![CI](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84)
+![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF)
+![Status](https://img.shields.io/badge/status-alpha%201.4-orange)
 
-No accounts. No analytics. No ads. No voice or video, and the app never asks for the microphone. The camera is used only on the QR scan screen, to read an invite; nothing it sees is saved. Everything stays on the phone except live walk data: in partner mode it goes **phone to phone** over an encrypted WebRTC data channel, in an open group it is relayed by a server you choose, which keeps nothing.
+</div>
 
-> **Honest status (alpha 1.3):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, haptics, WebRTC pairing, the widget and the Android 16 live update are all untested on a device. See [Status](#status).
+> **Honest status (alpha 1.4):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, WebRTC pairing, QR scanning, the widget and the Android 16 live update are untested on a device. See [Privacy and honest limitations](#privacy-and-honest-limitations).
 
-## Get the debug APK
+## Why
 
-1. Open the [latest green run of the CI workflow](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess).
-2. Scroll to **Artifacts** and download `walk-buddy-debug-apk`. GitHub asks you to **sign in** before it lets you download artifacts, even on a public repo.
-3. Unzip, copy `app-debug.apk` to the phone and install it (allow "install unknown apps" for your file manager). Debug builds are unsigned for release and are for trying the app, not for the Play Store.
-4. No buddy yet? Turn on **Demo mode** (onboarding, or Settings). It needs no permissions and no second phone.
-
-## Alpha 1.3: two ways to walk
-
-The home screen offers two cards:
-
-- **Walk with partner** (2 people): the couple mode, unchanged. Start a walk together, join with a code, or scan the QR. Phone to phone, nothing relayed.
-- **Open group walk** (up to about 50): create a group or join one. Anyone can join at any time, including after the walk has started.
-
-Both modes share the same **map**: an offline canvas view with a coloured dot (and initial) and trail per person, "Follow me" / "Whole group" camera, a meeting-point flag (long-press the map), a scale bar and zoom. In partner mode switch between Overview and Map during a walk; in a group the Map tab is the default.
-
-### Start an open group
-
-1. Home, **Open group walk**, **Create a group**. Choose your name, whether you approve each person, how long the group lasts (1 to 8 hours), an optional shared step goal, how precisely your location is shared, and the server address (`wss://...`, see [Run the signaling server](#run-the-signaling-server); the same server handles both modes).
-2. Open the **Invite** tab: a QR code, a 6-character code and a share button for the link. People can join with any of the three, mid-walk included; a late joiner gets the current roster and appears on the map as soon as their first update arrives.
-3. The host can approve or deny join requests, remove someone, set the step goal and the meeting point, and end the walk for everyone. The group also closes by itself after its time is up.
-
-### Join a group
-
-- **Scan:** Home, Open group walk, Join a group, **Scan a QR code** (or Scan QR on the partner card, which works for both kinds of invite). Camera permission is asked only there.
-- **Link:** tap a `walkbuddy://group/...` or `https://your-server/g/CODE` link, or paste it into the join screen.
-- **Code:** type the 6-character code. A bare code does not say which server to use, so the join screen also asks for the server address unless you saved one in Settings.
-
-### In the group
-
-- **People** tab: everyone with their live distance from you and steps, role tags (at the front, at the back), and "a little apart" shown softly, never as an alarm. There is no ranking; steps add up to one group total and an optional shared goal.
-- Gentle hints (catch-up for people a little behind, ease-off for someone far ahead) are computed on your phone from the group's centre. **Quiet mode** mutes them. You can choose to be the **sweeper**, who walks at the back on purpose; that only changes your own phone.
-- **Share my location** can be turned off at any time: you still see the group and your steps still count.
-- **Location precision** (exact, about 100 m or about 500 m grid) is applied on your phone before anything is sent. You always see yourself exactly.
-
-### Maps, tiles and routes
-
-The default map draws only the walkers and their trails, offline, with no network request. In Settings, **Show street map tiles** adds OpenStreetMap tiles (opt-in, with the attribution shown on the map); the tile servers then learn roughly which area you are looking at. **Save my route after a walk** (opt-in) keeps only your own track on the phone as a GPX file, which you can share or delete from Settings.
-
-## Alpha 1.2 feature tour
-
-<p>
-<img src="docs/screens/home.png" width="190" alt="Home with the giant step hero">
-<img src="docs/screens/home-dark.png" width="190" alt="Home in true-black dark theme">
-<img src="docs/screens/live-walk.png" width="190" alt="Live walk screen">
-<img src="docs/screens/weekly-recap.png" width="190" alt="Weekly recap">
-</p>
-
-- **Redesign:** one centred step hero, one card style, bundled fonts (Bricolage Grotesque and Figtree, both SIL OFL, see `docs/OFL-*.txt`), custom tab icons, a new adaptive launcher icon (with themed monochrome layer) and a matching splash.
-- **Screenshot loop:** CI renders every screen with Paparazzi (no emulator) in light, dark and 1.3x font scale and uploads the PNGs as the `screenshots` workflow artifact (separate, non-blocking job). It does not push any branch or tag.
-
-## Alpha 1.1 feature tour
-
-- **The hero:** a huge centred, tabular step count that springs up inside a thick gradient ring with a goal marker and a soft glow while you walk. Under it: a verified-steps line, a raw-vs-verified chip, and pills for distance, active minutes and (only if enabled) calories. Buddies sit on the ring as avatar dots with "ahead / behind" text. Reaching the goal brings confetti, a haptic and a shareable card. The same big number stays central on the live walk screen.
-- **Streak flame** with rest tokens, **badges** (12, with unlock snackbars), an **hour-by-hour histogram** ("your best walking hour") and a **month heat-map** calendar.
-- **Mood check-in** after a walk (emoji and a one-line note, stored locally) with an insight that says plainly it shows a pattern, not a cause.
-- **Couple extras:** "Our week" card, warm preset quick-reactions over the data channel (rate-limited), anniversary countdown, walk-date reminders.
-- **Gentle-day mode** (a softer goal on a low day that never raises the real goal) and a swipeable, story-style **weekly recap**.
-- **Share card:** stats only, drawn to a Bitmap and shared through FileProvider (no map, no location).
-- **Onboarding** in 3 steps, **demo mode**, and settings for km/mi, step-length calibration, reduce-motion, haptics and quiet hours.
-- **Around the system:** Glance home-screen widget, Quick Settings tile, app shortcuts, edge-to-edge, predictive back, splash screen, tablet/foldable layouts (nav rail), English and Hindi system strings, and on Android 16 a progress-style live-update notification during a walk.
-
-## Design notes
-
-"Dusk": a warm evening palette (amber to coral to berry) for people who walk after work. Material 3 with **dynamic colour on Android 12+ (opt-in in Settings)** and a hand-tuned brand palette as the default and fallback. Dark theme is true black for OLED. The step number uses a bold, tabular-figure display style so digits do not jiggle while counting. Shapes are generously rounded; the ring is the one loud element and everything else stays quiet. All motion respects the reduce-motion setting (count-up, glow, confetti, flame, pager).
-
-## Tech choices and the reason for each new dependency
-
-| Piece | Why |
-|---|---|
-| Navigation Compose 2.8 type-safe routes | `@Serializable` route objects instead of strings (kotlinx.serialization plugin was already applied). |
-| `androidx.core:core-splashscreen` 1.0.1 (new) | One splash API for API 26 to 35. |
-| `androidx.glance:glance-appwidget` 1.1.1 (new) | Compose-style home-screen widget. Isolated in its own `:widget` module and switchable with `-Pwidget=false`, so a Glance problem cannot break the app build. The app and widget only share a tiny SharedPreferences file and a broadcast. |
-| Android 16 `Notification.ProgressStyle` | Reached by reflection and gated by `SDK_INT >= 36` (compileSdk is 35), with the normal ongoing notification as fallback. No new dependency. |
-| `collectAsStateWithLifecycle`, immutable UI state, stable lazy keys | Lifecycle-safe collection and cheaper recomposition. |
-| Plain canvas share card, no image library | One Bitmap and a FileProvider are enough. |
-| WindowSizeClass-aware layout (`Adaptive.kt`) | Nav bar on phones, rail on wide screens. |
-
-Not done: shared-element transitions (cut to keep the build safe), a baseline profile (a good next step: add the Macrobenchmark module and generate one), and the Hindi translation covers system surfaces (app name, widget, shortcuts, tile, notification) while in-app copy is English only.
+Walking is better with someone, but most step apps are built for streaks and leaderboards. Walk Buddy was written for a couple who walk every evening, then widened to friends, families and walking clubs. It shows who is where, nudges gently when someone drifts a little apart, and builds a calm daily habit. There is no ranking and no shaming: steps from a group add up to one number.
 
 ## Features
 
-| Area | What you get |
-|---|---|
-| **Pairing** | 6-character session code (no look-alike letters), join link `walkbuddy://join/ABC234` (optionally carrying your server), QR code drawn by a pure-Kotlin encoder, or just type the code. Partner walks: a code, link or QR for one partner. Open groups: see [Alpha 1.3](#alpha-13-two-ways-to-walk). |
-| **Live walk** | Per buddy: distance, ahead/behind along your direction of travel, pace zone, steps. A "together" ring, calm status wording ("Sam has paused. No rush."), a nudge banner with a soft haptic. |
-| **Together engine** | Haversine distance with GPS-jitter handling (low-accuracy fixes dropped, impossible speeds dropped, stationary wobble ignored). Together score (share of walk time everyone is within your radius, default 50 m) and longest streak. Catch-up nudges with a sustained-gap timer, hysteresis, cooldown and a per-walk cap, so they never spam. Pace-match suggestion (the slowest moving buddy's rolling pace). Quiet mode mutes everything. |
-| **Honest steps** | Raw and verified steps side by side. Verified drops vehicle and bicycle time, and anything above walking speed (GPS above ~3.5 m/s for 8 s), and caps impossible step bursts. |
-| **Health logic** | Adaptive daily goal (14-day median plus ~10%, clamped, rest days ignored), pace zones from cadence (easy / brisk / vigorous), active minutes against the commonly cited 150 min/week guidance, sitting-break reminders (about an hour still, then a 2 minute stand or stroll), streaks with rest days and rest tokens, cooperative team goals, weekly report (steps trend, active minutes, best time of day, together score). |
-| **Calories (opt-in)** | Hidden by default and clearly labeled "estimate". Step length from height (0.415 / 0.413 / 0.414 x height) or calibrated from a GPS walk, speed from GPS or cadence, MET from a walking-speed lookup table with linear interpolation, **net** kcal = (MET - 1) x kg x hours, always shown as a range (about +/-25%). No weight-loss targets, no deficit maths, no BMI. Implausible profile values hide the numbers and show neutral copy. |
-| **Refuel ideas (opt-in)** | From the month's pattern (steps, active minutes, share of brisk walking) the app classifies light / moderate / high activity and suggests general, balanced ideas: water first, protein with complex carbs after longer or brisker walks, a salty drink on hot days, fruit and nuts. India-first, data-driven catalogue ([`refuel_catalogue.json`](domain/src/main/resources/refuel_catalogue.json)) with a vegan / vegetarian / vegetarian + egg switch, tested so a vegan filter never returns dairy or egg. No calorie targets, no diet plans, no weight advice, always with the disclaimer. |
-| **Couple mode** | Walk dates (opens your calendar with an optional weekly repeat, no calendar permission), "walked together 4 of 7 days", a shared odometer with fun milestones (marathon, Bengaluru to Mysuru about 140 km by road and so on, marked approximate), an opt-in rate-limited "thinking of you" haptic ping, favorite walking spots (stored locally, shareable to your partner during a session), a stats-only highlights card (no map), pace-sync mode (the faster partner gets the gentle nudge), quiet mode. |
-| **Privacy and safety** | "General wellness, not a medical device." "Share live location only with people you trust." Sharing ends when the walk ends. CSV export of your own data. A delete-all button. |
-| **Android** | Staged permissions (location while in use, foreground service of type location, activity recognition, notifications; **no microphone**), plain `LocationManager` and `SensorManager` step counter (no Play Services), Room history, DataStore settings, light and dark theme, empty and error states, content descriptions. Optional Health Connect behind a build flag. |
+**Steps hero**
+- One huge, centred step count that counts up inside an animated gradient ring, with a goal marker and a glow while you walk.
+- *Verified* steps next to raw sensor steps: vehicle and bicycle time and impossible bursts are left out.
+- Streak flame with rest tokens, 12 badges, hour-by-hour "best walking hour", month heat-map, weekly recap, gentle-day and rest-day modes, confetti when you reach the goal.
 
-## How it works
+**Partner mode** (2 people, phone to phone)
+- Pair by code, link or QR. Live distance, ahead or behind, pace zone, a "together" score and soft catch-up nudges (with cooldowns, so they never spam).
+- Couple extras: walk dates, "Our week", shared odometer milestones, quick reactions, anniversary countdown, favourite spots.
+- Live data goes over an encrypted WebRTC data channel; the server only introduces the two phones.
 
-```
-  Phone A                                           Phone B
- +--------------------------+                      +--------------------------+
- | Compose UI  (ui/)        |                      | Compose UI               |
- |   Home Week Fuel Us Set. |                      |                          |
- |   Lobby / Live / Summary |                      |                          |
- +------------+-------------+                      +------------+-------------+
-              | StateFlow                                        |
- +------------v-------------+   WebRTC data channel  +-----------v-------------+
- | WalkSession + WalkService|<======================>| WalkSession + Service   |
- |  (foreground, type loc.) |  hello / pos / ping /  |                         |
- +---+----------+-----------+  spot / bye (JSON v1)  +-------------------------+
-     |          |   ^
-     |          |   | offer / answer / ice only
-     |          v   |
-     |   +-------------------+      WebSocket      +--------------------------+
-     |   | PeerLink + OkHttp |<------------------->| server/  (Node, `ws`)    |
-     |   +-------------------+   (introductions)   | in-memory rooms by code, |
-     |                                             | never sees locations     |
- +---v--------------------------------------+      +--------------------------+
- | :domain  (pure Kotlin, JUnit tested)      |   STUN (stun.l.google.com) helps phones
- |  WalkEngine = FixFilter + Distance +      |   find a direct path; it is not a relay.
- |  Heading + Together + Nudge + Pace +      |
- |  VerifiedSteps + Calories + Food + Couple |
- |  + Protocol + QR + CSV                    |
- +---+--------------------------------+------+
-     |                                |
- +---v----------+              +------v--------------+
- | SensorManager|              | Room (days, walks,  |
- | LocationMgr  |              | spots, dates) +     |
- +--------------+              | DataStore settings  |
-                               +---------------------+
-```
+**Open group walks** (up to about 50, with QR join)
+- Create a group: optional host approval, time limit (1 to 8 h), optional shared step goal, meeting point.
+- Join by **QR scan**, `walkbuddy://` or https link, or the 6-character code, even after the walk has started.
+- People tab with initial avatars, role tags (front, back), "a little apart" shown softly, and one shared steps bar. Quiet mode, sweeper role, and a switch to stop sharing location.
+- Host can approve, remove, set the goal and meeting point, or end the walk for everyone.
 
-1. One person taps **Start a walk together**. The app makes a code and a link. The other person scans the QR, taps the link, or types the code.
-2. Both phones connect to the tiny signaling server for a moment and swap WebRTC `offer`, `answer` and `ice` messages. After the data channel opens, the phones talk directly.
-3. During the walk each phone broadcasts a small position message every 2 seconds. Each phone runs the **same pure-Kotlin engine** on what it receives: distance between you, ahead or behind, the together score, nudges. Nothing is computed on a server.
-4. When you end the walk the channel is closed, the signaling socket is closed, and a summary is saved on your phone only.
+**Map** (both modes)
+- Offline canvas map: a dot with initial and a trail per person, follow me or whole group, meeting-point flag, scale bar. No network request by default.
+- Opt-in OpenStreetMap tiles (with attribution) and opt-in local GPX route saving.
 
-```
-domain/    pure Kotlin JVM, no Android: protocol + QR, geo, together/nudge/pace engine, verified steps,
-           health logic, calories, refuel catalogue, couple features, CSV, WalkEngine (unit tested)
-app/       Android: data/ (Room, DataStore, repository), sensors/, rtc/ (OkHttp signaling + WebRTC),
-           session/ (WalkSession, foreground service), notify/, health/ (optional), ui/ (Compose)
-server/    Node 18+ signaling relay (one dependency: ws), Dockerfile, node --test tests
-```
+**Health, food and calorie tools** (all opt-in, wellness only)
+- Adaptive daily goal, pace zones, active minutes against the 150 min/week guidance, sitting-break reminders.
+- Calories: hidden by default, always shown as an estimated range, net of resting energy, no deficit or weight-loss targets.
+- Refuel ideas: general, balanced suggestions with a vegan / vegetarian / egg switch. No diets, no targets, no BMI.
 
-### The message protocol
+**Privacy**
+- No accounts, no analytics, no ads, no microphone, no voice or video. Camera only on the QR scan screen, nothing saved.
+- Your data lives on your phone: CSV export and delete-all in Settings.
 
-Peer messages are versioned JSON, `{"v":1,"t":"pos", ...}`: `hello`, `pos`, `ping`, `spot`, `react`, `day`, `bye`. The decoder is tolerant (unknown fields ignored, numbers sent as strings accepted, newer versions and unknown types accepted as `Unknown`) and strict about values (ranges, sizes, finite numbers, control characters stripped from names), so a buggy peer cannot crash or confuse your screen. The signaling protocol is documented in [`server/README.md`](server/README.md).
+**Around the system:** Glance home-screen widget, Quick Settings tile, shortcuts, edge-to-edge, predictive back, tablet layouts, light, dark (true black) and optional dynamic colour, English and Hindi system strings.
 
-## Run the signaling server
+## Screenshots
+
+| Home | Home (dark) | Live walk | Weekly recap |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/home.png" width="180" alt="Home with the step hero"> | <img src="docs/screens/home-dark.png" width="180" alt="Home in true-black dark theme"> | <img src="docs/screens/live-walk.png" width="180" alt="Live walk screen"> | <img src="docs/screens/weekly-recap.png" width="180" alt="Weekly recap"> |
+
+> **These images are from alpha 1.2 and are not refreshed.** Alpha 1.4 changed the home screen (the two walk-mode cards) and the group screens, but CI screenshots are only available as a workflow artifact that GitHub lets you download after signing in, and they could not be fetched automatically. To see the current UI, download the `screenshots` artifact from the [latest CI run](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess), or build the APK.
+
+## Quick start
+
+### Install the debug APK
+
+1. Open the [latest green CI run](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess) and download the `walk-buddy-debug-apk` artifact (GitHub asks you to sign in for artifacts, even on a public repo).
+2. Unzip, copy `app-debug.apk` to the phone and install it (allow "install unknown apps" for your file manager). It is a debug build for trying the app, not for the Play Store.
+3. No buddy yet? Turn on **Demo mode** (onboarding or Settings): no permissions and no second phone needed.
+
+### Build it yourself
+
+Android Studio Ladybug (2024.2) or newer, JDK 17+. Open the folder and run `app`, or:
 
 ```bash
-cd server
-npm install
-npm start          # :8080
-npm test           # 49 tests
+./gradlew :app:assembleDebug
 ```
 
-Or with Docker: `docker build -t walk-buddy-signaling server && docker run -p 8080:8080 walk-buddy-signaling`. Put it behind TLS and enter the `wss://` address in the app under Settings > Signaling server (there is a Test connection button). Details, limits and the privacy note are in [`server/README.md`](server/README.md).
+### Run the server
 
-## Build the app
+Partner pairing and group walks both use one small Node signaling and relay server (one dependency: `ws`).
 
-1. Android Studio Ladybug (2024.2) or newer, JDK 17+.
-2. Open this folder. The Gradle wrapper is included (`./gradlew`).
-3. Run the `app` configuration on a device or emulator (API 26+), or `./gradlew :app:assembleDebug`.
+```bash
+# Node 18+
+cd server && npm install && npm start          # listens on :8080
 
-CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then on the GitHub runner's preinstalled Android SDK: `:domain:test`, `:app:assembleDebug`, `:app:lintDebug` (reported, not blocking) and a non-blocking Health Connect compile. The debug APK is uploaded as the `walk-buddy-debug-apk` artifact.
+# or Docker
+docker build -t walk-buddy-server server
+docker run -p 8080:8080 walk-buddy-server
+```
 
-Release history: [CHANGELOG.md](CHANGELOG.md) and [RELEASES.md](RELEASES.md).
+Put it behind TLS and enter its `wss://` address in the app (Settings, Signaling server, with a Test connection button). Limits and the privacy note are in [`server/README.md`](server/README.md).
 
-Change `applicationId` / `namespace` in `app/build.gradle.kts` before publishing.
+### Join a group walk
 
-### Tests
+1. **Scan:** Home, Open group walk, Join a group, **Scan a QR code**. Camera permission is asked only there.
+2. **Link:** tap a `walkbuddy://group/...` or `https://your-server/g/CODE` link, or paste it into the join screen.
+3. **Code:** type the 6-character code. A bare code does not say which server to use, so the join screen also asks for the server address unless it is saved in Settings.
+
+To host: Home, Open group walk, **Create a group**, then share the QR, code or link from the **Invite** tab.
+
+## Architecture
+
+```
+domain/   pure Kotlin JVM, no Android: protocol and QR encoder, geo, together/nudge/pace engines, group engine
+          (centroid, stragglers, roles, collective goal), verified steps, health, calories, refuel catalogue (unit tested)
+app/      Android: Compose UI, Room + DataStore, sensors, WebRTC peer link, group session, foreground service, notifications
+widget/   Glance home-screen widget, its own module (switch off with -Pwidget=false)
+server/   Node 18+ signaling and group relay, in-memory rooms, Dockerfile, node --test tests
+```
+
+Partner mode: phones swap WebRTC offers through the server, then talk directly; each phone runs the same pure-Kotlin engine on what it receives. Open groups: phones send small validated updates to the server, which relays them to that one group and keeps nothing. The wire formats are versioned JSON, documented in [`server/README.md`](server/README.md).
+
+Tests and CI:
 
 ```bash
 ./gradlew :domain:test                 # 284 tests
-scripts/domain-test-offline.sh         # same tests with only the jars inside a Gradle distribution (no Maven needed)
+scripts/domain-test-offline.sh         # same tests with only the jars inside a Gradle distribution
 cd server && npm test                  # 49 tests
 ```
 
-### Health Connect (optional, off by default)
+CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:domain:test`, `:app:assembleDebug` and lint (reported, not blocking), uploads the debug APK, and renders every screen with Paparazzi in a separate non-blocking job (the `screenshots` artifact). It never pushes a branch or a tag.
 
-`./gradlew :app:assembleDebug -PhealthConnect=true` adds `androidx.health.connect:connect-client` and compiles `app/src/healthconnect/` (read today's steps, write each finished walk as an exercise session). It is off by default so an API mismatch in an alpha library cannot break the main build. The app talks to it only through the `HealthBridge` interface and loads the implementation by name. CI tries this build separately and does not fail the pipeline if it breaks.
+## Privacy and honest limitations
 
-## Privacy
-
-- No accounts, no analytics, no ads, no third-party SDKs that phone home. The app has no microphone permission (the manifest removes it if a library adds it). The camera permission is requested only on the QR scan screen; scanning runs on the phone (CameraX and ZXing, no Play Services), and nothing is recorded or sent.
-- Steps, walks, spots, dates and settings live in a local database on the phone. `allowBackup` is off. Export them as CSV, or delete everything from Settings.
-- Partner mode: live location goes only to the buddy who joined, directly phone to phone. Sharing starts when you open a session and ends when the walk ends.
-- Open groups: your updates (a possibly blurred position, steps, name) go to the server, which relays them to the members of that one group and keeps nothing: no location storage, no persistence, no public list of groups. Anyone who has the code or QR can join (unless the host approves each person), so share it only with people you trust. The server operator can see IP addresses and the traffic while it passes through, so use a server you trust or run your own.
-- Group walks are saved on your phone as your own walk (not as couple walks); other members' positions and steps are never stored.
-- The signaling server sees IP addresses and opaque WebRTC connection descriptions for a few seconds. It never receives locations or steps, keeps rooms in memory only, and logs no codes or payloads (a test enforces it). Run your own if you prefer.
-- STUN uses Google's public servers by default, which sees that your phone asked for its public address.
-- General wellness only. This is not a medical device and gives no medical or nutrition advice.
-
-## Status
-
-What is verified, and what is not:
-
-- **Verified here:** `:domain` compiles with Kotlin 2.0.21 (via Gradle's bundled compiler) and all 284 tests pass. The server's 49 tests pass on Node 22 against real WebSocket clients. The pure-Kotlin QR encoder's output was decoded successfully by OpenCV's QR detector for several payloads (a one-off manual check; the unit tests cover Reed-Solomon, format bits and structure with published vectors).
-- **Compiled by CI:** the whole `:app` and `:widget` build on the GitHub runner (Kotlin 2.0.21, AGP 8.7.3, compileSdk 35). `stream-webrtc-android:1.3.7` and OkHttp 4.12.0 resolve and compile. That proves they compile, not that pairing works.
-- **Unverified:** the optional Health Connect build (`-PhealthConnect=true`) currently fails in KSP and is non-blocking in CI; Android 16 `ProgressStyle` by reflection; Glance widget rendering on real launchers; the Quick Settings tile and shortcuts on devices.
-- **Open groups, new in alpha 1.3:** the group relay and domain logic have unit and server tests (284 and 49), and the whole app compiles on CI, but the group screens, QR scanning, map gestures and OSM tiles have never run on a phone. The group relay trusts the server operator, a kicked person is banned by their anonymous id for that group only, and group details are not kept after the walk. A QR code holds an invite of up to about 106 bytes, so a very long server address shows the code and link only.
-- **Not tested on a device.** No phone has run this. GPS behaviour, the foreground service, haptics and WebRTC connectivity are all untested.
-- **No TURN relay.** Pairing uses STUN only, as designed (everything stays phone to phone). Some mobile networks (carrier-grade NAT, common on Indian mobile data) and strict corporate Wi-Fi block direct connections, and then two phones will simply fail to connect. Same-Wi-Fi or a friendly network works best. Adding TURN is a one-line change in `PeerLink.iceServers` plus a server you trust.
-- **Calorie table:** the walking MET values were transcribed from memory of the 2011 Compendium of Physical Activities. The source is cited in `Calories.kt`; verify the numbers against the published tables.
-- **Steps outside walks:** with no GPS running, steps between periodic samples (about every 15 minutes) are only plausibility-checked (a cap on steps per minute). Vehicle and bicycle filtering needs GPS, so it applies during walks.
-- **Activity recognition** is a simple speed + cadence classifier in `:domain`, not Google's Activity Recognition API, so there is no Play Services dependency. The `ACTIVITY_RECOGNITION` permission is still requested for the hardware step counter.
-- Pings and shared spots only work while two phones are connected (lobby or walk), because there is deliberately no server that stores anything.
-- The app layer has no unit tests; all logic worth testing lives in `:domain`. Compose previews (light, dark, large font) exist for the hero only.
+- **Where data goes.** Steps, walks, spots and settings stay in a local database (`allowBackup` is off). Partner mode sends live data phone to phone. In an open group your name, steps and a possibly blurred position (exact, about 100 m or about 500 m grid, applied on your phone) go to the server you chose, which relays them to that group and stores nothing. Other members' data is never saved on your phone.
+- **Trust.** Anyone with the code or QR can join an open group unless the host approves each person, so share it only with people you trust. The server operator can see IP addresses and traffic while it passes through; use your own server or one you trust. STUN uses Google's public servers by default.
+- **Not tested on a device.** No phone has run this build. GPS behaviour, the foreground service, haptics, QR scanning, map gestures, OSM tiles and WebRTC connectivity are untested.
+- **No TURN relay.** Pairing uses STUN only, by design. Carrier-grade NAT (common on mobile data) and strict corporate Wi-Fi can block direct connections; same Wi-Fi works best.
+- **Health Connect** (`-PhealthConnect=true`) is optional and currently fails to build in KSP (non-blocking in CI).
+- **Calorie table** values were transcribed from memory of the 2011 Compendium of Physical Activities; verify them against the published tables.
+- **Steps outside walks** are only plausibility-checked; vehicle filtering needs GPS and applies during walks.
+- A QR code holds an invite of up to about 106 bytes, so a very long server address shows the link and code only.
+- General wellness only: not a medical device, no medical or nutrition advice.
 
 ## Roadmap
 
-- v1.1: BLE heart-rate strap (live heart rate on the walk screen, opt-in).
-- v1.1: walking-steadiness trend.
+- First real-device pass: GPS jitter and nudge thresholds, pairing, group walks.
 - Optional TURN configuration for networks that block direct connections.
-- Compile and device-test pass once CI is green; first real GPS walk to tune the jitter and nudge thresholds.
-- Baseline profile, more previews, full Hindi translation.
+- BLE heart-rate strap and a walking-steadiness trend (opt-in).
+- Baseline profile, group-screen screenshot tests, full Hindi translation.
 
-## Credits and licence
+## Contributing
 
-MIT, see [LICENSE](LICENSE). Gradle and CI setup follow the Builder's Ledger project.
+Issues and pull requests are welcome. Keep logic that deserves tests in `:domain` (or `server/`), run `./gradlew :domain:test` and `cd server && npm test` before pushing, and keep to the privacy rules above: no accounts, no analytics, no new permissions without a clear reason. Android code only compiles on CI in this project, so check the CI run on your change. Release history: [CHANGELOG.md](CHANGELOG.md) and [RELEASES.md](RELEASES.md).
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). Bundled fonts (Bricolage Grotesque, Figtree) are SIL OFL, see `docs/OFL-*.txt`.

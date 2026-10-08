@@ -4,7 +4,7 @@ package com.walkbuddy.ui.screens
 
 import androidx.compose.foundation.horizontalScroll
 import com.walkbuddy.ui.components.staggerIn
-androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
