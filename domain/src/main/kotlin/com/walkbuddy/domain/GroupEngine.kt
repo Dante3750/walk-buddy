@@ -27,6 +27,7 @@ data class GroupMemberCard(
 )
 
 data class GroupState(
+    val selfId: String,
     val nowMs: Long,
     val elapsedMs: Long,
     val myDistanceM: Double,
@@ -204,7 +205,7 @@ class GroupEngine(
         }
         val myView = analysis.views[selfId]
         return GroupState(
-            nowMs = nowMs, elapsedMs = nowMs - startMs, myDistanceM = st.myDistanceM, myVerifiedSteps = st.myVerifiedSteps,
+            selfId = selfId, nowMs = nowMs, elapsedMs = nowMs - startMs, myDistanceM = st.myDistanceM, myVerifiedSteps = st.myVerifiedSteps,
             myRawSteps = st.myRawSteps, mySpeedMps = mySpeed, myCadenceSpm = st.myCadenceSpm, myPos = me,
             memberCount = 1 + live.size, members = cards, centre = analysis.centre, groupRadiusM = analysis.radiusM,
             lengthM = analysis.lengthM, myRole = myView?.role, iAmStraggler = myView?.straggler == true,

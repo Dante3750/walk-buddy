@@ -40,6 +40,8 @@ data class WalkState(
     val togetherNow: Boolean?,
     val nudge: Nudge?,
     val paceSuggestion: PaceSuggestion?,
+    /** My latest accepted position, for the map. */
+    val myPos: LatLon? = null,
 )
 
 /**
@@ -215,6 +217,7 @@ class WalkEngine(
             nowMs = nowMs, elapsedMs = nowMs - startMs, myDistanceM = distance.totalM, myVerifiedSteps = t.verified, myRawSteps = t.raw,
             myCadenceSpm = cad, myZone = PaceZone.fromCadence(cad), mySpeedMps = mySpeed, myActivity = activity, buddies = cards,
             together = together.snapshot(), togetherNow = togetherNow, nudge = nudge, paceSuggestion = suggestion,
+            myPos = me,
         )
     }
 

@@ -12,5 +12,6 @@ object Copy {
         "Calories are a rough estimate from your walking speed, time and the weight you entered. Real values vary from person to person."
     const val NEUTRAL_PROFILE = "Add a realistic height and weight in Settings to see estimates. You can also hide them entirely."
     const val ACTIVE_GUIDANCE = "Many health bodies commonly cite about 150 minutes of moderate activity per week for adults. It is a guide, not a target you have to hit."
+    const val GROUP_RELAY = "In an open group, live updates pass through the server so everyone can see them. The server does not store them. Join only groups you trust."
     const val LOCAL_ONLY = "Your steps, walks and settings stay on this phone. Only live walk data goes directly to the buddies you invite."
 }
