@@ -27,7 +27,7 @@ No accounts. No analytics. No ads. No voice or video, and the app never asks for
 </p>
 
 - **Redesign:** one centred step hero, one card style, bundled fonts (Bricolage Grotesque and Figtree, both SIL OFL, see `docs/OFL-*.txt`), custom tab icons, a new adaptive launcher icon (with themed monochrome layer) and a matching splash.
-- **Screenshot loop:** CI renders every screen with Paparazzi (no emulator) in light, dark and 1.3x font scale, and force-pushes the PNGs to the `ci-screenshots` branch (separate, non-blocking job). Fetch it with `git fetch origin ci-screenshots`. The branch is disposable and can be deleted, along with the `screenshots` job, at any time.
+- **Screenshot loop:** CI renders every screen with Paparazzi (no emulator) in light, dark and 1.3x font scale and uploads the PNGs as the `screenshots` workflow artifact (separate, non-blocking job). It does not push any branch or tag.
 
 ## Alpha 1.1 feature tour
 

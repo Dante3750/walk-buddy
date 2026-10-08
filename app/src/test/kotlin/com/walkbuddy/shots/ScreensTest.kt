@@ -39,7 +39,7 @@ import org.junit.Test
 
 /**
  * Renders every main screen with static data. The PNGs go to app/build/shots; CI publishes them to the
- * `ci-screenshots` branch so the UI can be reviewed without a phone.
+ * `screenshots` workflow artifact so the UI can be reviewed without a phone.
  */
 class ScreensTest {
     @get:Rule val paparazzi = newPaparazzi()

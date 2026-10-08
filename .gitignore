@@ -8,5 +8,5 @@ node_modules/
 *.log
 .DS_Store
 
-# Paparazzi output (rendered in CI and published to the ci-screenshots branch, not committed)
+# Paparazzi output (rendered in CI and uploaded as a CI workflow artifact, not committed)
 app/src/test/snapshots/
