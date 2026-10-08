@@ -65,13 +65,21 @@ private fun palette(kind: SlideKind): Pair<Color, Color> = when (kind) {
 fun RecapScreen(vm: AppViewModel, onBack: () -> Unit) {
     val slides by vm.recap.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
+    RecapContent(
+        slides = slides, onBack = onBack,
+        onShare = { s, index -> ShareCard.share(ctx, ShareSpec("MY WEEK", s.big, s.title, (index + 1f) / slides.size, listOf(s.caption))) },
+    )
+}
+
+@Composable
+fun RecapContent(slides: List<RecapSlide>, onBack: () -> Unit, onShare: (RecapSlide, Int) -> Unit, initialPage: Int = 0) {
     val reduce = WbTheme.motion.reduceMotion
     val scope = rememberCoroutineScope()
     if (slides.isEmpty()) {
         EmptyState("Nothing to show yet", "Your recap appears once you have a few days of steps.")
         return
     }
-    val pager = rememberPagerState(pageCount = { slides.size })
+    val pager = rememberPagerState(initialPage = initialPage.coerceIn(0, slides.lastIndex), pageCount = { slides.size })
     fun goTo(i: Int) {
         val t = i.coerceIn(0, slides.lastIndex)
         scope.launch { if (reduce) pager.scrollToPage(t) else pager.animateScrollToPage(t) }
@@ -105,10 +113,7 @@ fun RecapScreen(vm: AppViewModel, onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close recap", tint = Color.White) }
                 IconButton(
-                    onClick = {
-                        val s = slides[pager.currentPage]
-                        ShareCard.share(ctx, ShareSpec("MY WEEK", s.big, s.title, (pager.currentPage + 1f) / slides.size, listOf(s.caption)))
-                    },
+                    onClick = { onShare(slides[pager.currentPage], pager.currentPage) },
                 ) { Icon(Icons.Default.Share, contentDescription = "Share this slide", tint = Color.White) }
             }
         }

@@ -18,7 +18,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.FoodItem
+import com.walkbuddy.data.Settings
+import com.walkbuddy.data.SettingsStore
 import com.walkbuddy.ui.AppViewModel
+import com.walkbuddy.ui.FuelUi
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
 import com.walkbuddy.ui.components.SectionCard
@@ -30,8 +33,17 @@ fun FuelScreen(vm: AppViewModel) {
     val fuel by vm.fuel.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val hot by vm.hotDay.collectAsStateWithLifecycle()
-    val s = settings
-    val f = fuel
+    FuelContent(settings, fuel, hot, onSave = { vm.saveSettings(it) }, onHot = { onHot(it) })
+}
+
+@Composable
+fun FuelContent(
+    s: Settings?,
+    f: FuelUi?,
+    hot: Boolean,
+    onSave: (suspend SettingsStore.() -> Unit) -> Unit,
+    onHot: (Boolean) -> Unit,
+) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("This month", style = MaterialTheme.typography.titleLarge)
         if (s == null || f == null) {
@@ -43,8 +55,8 @@ fun FuelScreen(vm: AppViewModel) {
                 "Both extras are off",
                 "Calorie estimates and refuel ideas are optional and hidden by default. Turn on only what you find useful.",
                 action = {
-                    Button(onClick = { vm.saveSettings { setCalories(true) } }) { Text("Show calorie estimate") }
-                    Button(onClick = { vm.saveSettings { setFood(true) } }) { Text("Show refuel ideas") }
+                    Button(onClick = { onSave { setCalories(true) } }) { Text("Show calorie estimate") }
+                    Button(onClick = { onSave { setFood(true) } }) { Text("Show refuel ideas") }
                 },
             )
             Disclaimer(Copy.WELLNESS)
@@ -63,7 +75,7 @@ fun FuelScreen(vm: AppViewModel) {
                     }
                 }
                 Disclaimer(Copy.CALORIE_NOTE)
-                Button(onClick = { vm.saveSettings { setCalories(false) } }) { Text("Hide calories") }
+                Button(onClick = { onSave { setCalories(false) } }) { Text("Hide calories") }
             }
         }
 
@@ -72,12 +84,12 @@ fun FuelScreen(vm: AppViewModel) {
                 Text(f.ideas.headline, style = MaterialTheme.typography.titleMedium)
                 f.ideas.summary?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     ?: if (!f.profileOk) Text(Copy.NEUTRAL_PROFILE) else Text("A few more days of steps will make these a bit more fitting.")
-                ToggleRow("Hot day", "Adds a salty drink idea", hot) { vm.hotDay.value = it }
+                ToggleRow("Hot day", "Adds a salty drink idea", hot) { onHot(it) }
                 IdeaGroup("Hydration first", f.ideas.hydration)
                 IdeaGroup("After a longer or brisker walk", f.ideas.afterWalk)
                 IdeaGroup("Easy snacks", f.ideas.snacks)
                 Disclaimer(f.ideas.disclaimer)
-                Button(onClick = { vm.saveSettings { setFood(false) } }) { Text("Hide refuel ideas") }
+                Button(onClick = { onSave { setFood(false) } }) { Text("Hide refuel ideas") }
             }
         }
     }

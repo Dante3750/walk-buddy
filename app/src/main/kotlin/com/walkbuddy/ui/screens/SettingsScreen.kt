@@ -59,27 +59,62 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** What the settings screen can do, as callbacks, so it renders without a ViewModel. */
+class SettingsActions(
+    val save: (suspend com.walkbuddy.data.SettingsStore.() -> Unit) -> Unit = {},
+    val setDemoMode: (Boolean) -> Unit = {},
+    val testServer: (String, (String?) -> Unit) -> Unit = { _, _ -> },
+    val calibrate: ((String) -> Unit) -> Unit = {},
+    val healthAvailable: ((Boolean) -> Unit) -> Unit = {},
+    val onExport: () -> Unit = {},
+    val deleteEverything: (() -> Unit) -> Unit = {},
+)
+
 @Composable
 fun SettingsScreen(vm: AppViewModel) {
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val s = settings
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) scope.launch {
+            val text = vm.exportText()
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) } }.isSuccess
+            }
+            Toast.makeText(ctx, if (ok) "Exported" else "Could not write the file", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val actions = SettingsActions(
+        save = { vm.saveSettings(it) },
+        setDemoMode = { vm.setDemoMode(it) },
+        testServer = { url, done -> vm.testServer(url, done) },
+        calibrate = { done -> vm.calibrateStepLength(done) },
+        healthAvailable = { done -> vm.healthAvailable(done) },
+        onExport = { export.launch("walk-buddy-export.csv") },
+        deleteEverything = { done -> vm.deleteEverything(done) },
+    )
+    SettingsContent(settings, actions)
+}
+
+@Composable
+fun SettingsContent(s: Settings?, a: SettingsActions) {
     if (s == null) {
         EmptyState("Loading", "One moment.")
         return
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
-        AppearanceSection(vm, s)
-        ProfileSection(vm, s)
-        GoalSection(vm, s)
-        StepLengthSection(vm, s)
-        QuietHoursSection(vm, s)
-        WalkSection(vm, s)
-        ServerSection(vm, s)
-        ExtrasSection(vm, s)
-        HealthSection(vm, s)
-        DemoSection(vm, s)
-        DataSection(vm)
+        AppearanceSection(a, s)
+        ProfileSection(a, s)
+        GoalSection(a, s)
+        StepLengthSection(a, s)
+        QuietHoursSection(a, s)
+        WalkSection(a, s)
+        ServerSection(a, s)
+        ExtrasSection(a, s)
+        HealthSection(a, s)
+        DemoSection(a, s)
+        DataSection(a)
         SectionCard("About") {
             Text(Copy.WELLNESS)
             Text(Copy.SHARE_LOCATION)
@@ -90,7 +125,7 @@ fun SettingsScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun ProfileSection(vm: AppViewModel, s: Settings) {
+private fun ProfileSection(a: SettingsActions, s: Settings) {
     var name by remember(s.displayName) { mutableStateOf(s.displayName) }
     var height by remember(s.heightCm) { mutableStateOf(s.heightCm?.let { "%.0f".format(it) } ?: "") }
     var weight by remember(s.weightKg) { mutableStateOf(s.weightKg?.let { "%.1f".format(it) } ?: "") }
@@ -118,7 +153,7 @@ private fun ProfileSection(vm: AppViewModel, s: Settings) {
         Button(
             enabled = !hBad && !wBad,
             onClick = {
-                vm.saveSettings {
+                a.save {
                     setName(name.trim())
                     setBody(h, w, sex)
                 }
@@ -128,21 +163,21 @@ private fun ProfileSection(vm: AppViewModel, s: Settings) {
 }
 
 @Composable
-private fun GoalSection(vm: AppViewModel, s: Settings) {
+private fun GoalSection(a: SettingsActions, s: Settings) {
     var fixed by remember(s.fixedGoal) { mutableStateOf(s.fixedGoal.toString()) }
     val ctx = LocalContext.current
     SectionCard("Daily goal") {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = s.goalMode == GoalMode.Adaptive, onClick = { vm.saveSettings { setGoal(GoalMode.Adaptive, s.fixedGoal) } })
+            RadioButton(selected = s.goalMode == GoalMode.Adaptive, onClick = { a.save { setGoal(GoalMode.Adaptive, s.fixedGoal) } })
             Text("Adaptive: based on your last two weeks, a little higher, never extreme")
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = s.goalMode == GoalMode.Fixed, onClick = { vm.saveSettings { setGoal(GoalMode.Fixed, s.fixedGoal) } })
+            RadioButton(selected = s.goalMode == GoalMode.Fixed, onClick = { a.save { setGoal(GoalMode.Fixed, s.fixedGoal) } })
             Text("Fixed number")
         }
         if (s.goalMode == GoalMode.Fixed) {
             OutlinedTextField(value = fixed, onValueChange = { fixed = it.filter(Char::isDigit).take(5) }, label = { Text("Steps per day") }, singleLine = true)
-            TextButton(onClick = { vm.saveSettings { setGoal(GoalMode.Fixed, (fixed.toIntOrNull() ?: 6000).coerceIn(500, 50_000)) } }) { Text("Save goal") }
+            TextButton(onClick = { a.save { setGoal(GoalMode.Fixed, (fixed.toIntOrNull() ?: 6000).coerceIn(500, 50_000)) } }) { Text("Save goal") }
         }
         Text("Rest days (the goal pauses and streaks are not affected)", style = MaterialTheme.typography.bodyMedium)
         val labels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -151,36 +186,36 @@ private fun GoalSection(vm: AppViewModel, s: Settings) {
                 val day = i + 1
                 FilterChip(
                     selected = day in s.restWeekdays,
-                    onClick = { vm.saveSettings { setRestWeekdays(if (day in s.restWeekdays) s.restWeekdays - day else s.restWeekdays + day) } },
+                    onClick = { a.save { setRestWeekdays(if (day in s.restWeekdays) s.restWeekdays - day else s.restWeekdays + day) } },
                     label = { Text(label) },
                 )
             }
         }
         ToggleRow("Sitting-break reminders", "About an hour of sitting, then a 2 minute stand or stroll. Checked every ~15 minutes, quiet at night.", s.sittingReminders) { on ->
-            vm.saveSettings { setSitting(on) }
+            a.save { setSitting(on) }
             if (on) PeriodicSampler.schedule(ctx)
         }
     }
 }
 
 @Composable
-private fun WalkSection(vm: AppViewModel, s: Settings) {
+private fun WalkSection(a: SettingsActions, s: Settings) {
     var radius by remember(s.radiusM) { mutableStateOf(s.radiusM.toFloat()) }
     SectionCard("Walking together") {
         Text("Together radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
         Slider(
             value = radius, onValueChange = { radius = it }, valueRange = 20f..200f,
-            onValueChangeFinished = { vm.saveSettings { setRadius(radius.toInt()) } },
+            onValueChangeFinished = { a.save { setRadius(radius.toInt()) } },
         )
         Disclaimer("The together score is the share of the walk spent within this distance of each other.")
-        ToggleRow("Quiet mode by default", "Start every walk with nudges muted", s.quietByDefault) { on -> vm.saveSettings { setQuietDefault(on) } }
-        ToggleRow("Pace-sync mode", "The faster partner gets the gentle nudge instead of the one behind", s.paceSync) { on -> vm.saveSettings { setPaceSync(on) } }
-        ToggleRow("'Thinking of you' ping", "A tiny haptic hello to your buddy during a walk. Rate limited.", s.pingEnabled) { on -> vm.saveSettings { setPing(on) } }
+        ToggleRow("Quiet mode by default", "Start every walk with nudges muted", s.quietByDefault) { on -> a.save { setQuietDefault(on) } }
+        ToggleRow("Pace-sync mode", "The faster partner gets the gentle nudge instead of the one behind", s.paceSync) { on -> a.save { setPaceSync(on) } }
+        ToggleRow("'Thinking of you' ping", "A tiny haptic hello to your buddy during a walk. Rate limited.", s.pingEnabled) { on -> a.save { setPing(on) } }
     }
 }
 
 @Composable
-private fun ServerSection(vm: AppViewModel, s: Settings) {
+private fun ServerSection(a: SettingsActions, s: Settings) {
     var url by remember(s.serverUrl) { mutableStateOf(s.serverUrl) }
     var result by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
@@ -192,12 +227,12 @@ private fun ServerSection(vm: AppViewModel, s: Settings) {
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { vm.saveSettings { setServer(url) } }) { Text("Save") }
+            Button(onClick = { a.save { setServer(url) } }) { Text("Save") }
             OutlinedButton(
                 enabled = url.isNotBlank() && !testing,
                 onClick = {
                     testing = true; result = null
-                    vm.testServer(url.trim()) { err ->
+                    a.testServer(url.trim()) { err ->
                         // Called from a background thread.
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             testing = false
@@ -213,23 +248,23 @@ private fun ServerSection(vm: AppViewModel, s: Settings) {
 }
 
 @Composable
-private fun ExtrasSection(vm: AppViewModel, s: Settings) {
+private fun ExtrasSection(a: SettingsActions, s: Settings) {
     val ctx = LocalContext.current
     SectionCard("Optional extras") {
-        ToggleRow("Show calorie estimate", "A rough range, clearly labeled. Hidden by default.", s.caloriesEnabled) { on -> vm.saveSettings { setCalories(on) } }
+        ToggleRow("Show calorie estimate", "A rough range, clearly labeled. Hidden by default.", s.caloriesEnabled) { on -> a.save { setCalories(on) } }
         if (s.caloriesEnabled) {
             Text(
                 s.calibratedStepLengthM?.let { "Calibrated step length: %.2f m".format(it) } ?: "Step length comes from your height. You can calibrate it from a GPS walk.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedButton(onClick = { vm.calibrateStepLength { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() } }) { Text("Calibrate from my last walk") }
+            OutlinedButton(onClick = { a.calibrate { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() } }) { Text("Calibrate from my last walk") }
         }
-        ToggleRow("Show refuel ideas", "General, balanced ideas. Not a diet plan.", s.foodEnabled) { on -> vm.saveSettings { setFood(on) } }
+        ToggleRow("Show refuel ideas", "General, balanced ideas. Not a diet plan.", s.foodEnabled) { on -> a.save { setFood(on) } }
         if (s.foodEnabled) {
             Text("Food preference", style = MaterialTheme.typography.bodyMedium)
             Diet.values().forEach { d ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = s.diet == d, onClick = { vm.saveSettings { setDiet(d) } })
+                    RadioButton(selected = s.diet == d, onClick = { a.save { setDiet(d) } })
                     Text(d.label)
                 }
             }
@@ -239,16 +274,16 @@ private fun ExtrasSection(vm: AppViewModel, s: Settings) {
 }
 
 @Composable
-private fun HealthSection(vm: AppViewModel, s: Settings) {
+private fun HealthSection(a: SettingsActions, s: Settings) {
     val ctx = LocalContext.current
     var available by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { vm.healthAvailable { available = it } }
+    LaunchedEffect(Unit) { a.healthAvailable { available = it } }
     SectionCard("Health Connect (optional)") {
         if (!HealthBridges.compiledIn) {
             Text("Not included in this build. Build with -PhealthConnect=true to add it. Walk Buddy works fully without it.", style = MaterialTheme.typography.bodyMedium)
         } else {
             ToggleRow("Save walks to Health Connect", if (available) "Writes each finished walk as an exercise session." else "Health Connect is not available on this phone.", s.healthConnectOn && available) { on ->
-                vm.saveSettings { setHealthConnect(on) }
+                a.save { setHealthConnect(on) }
             }
             OutlinedButton(onClick = {
                 try {
@@ -262,22 +297,12 @@ private fun HealthSection(vm: AppViewModel, s: Settings) {
 }
 
 @Composable
-private fun DataSection(vm: AppViewModel) {
+private fun DataSection(a: SettingsActions) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf(false) }
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        if (uri != null) scope.launch {
-            val text = vm.exportText()
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) } }.isSuccess
-            }
-            Toast.makeText(ctx, if (ok) "Exported" else "Could not write the file", Toast.LENGTH_SHORT).show()
-        }
-    }
     SectionCard("Your data") {
         Text("Everything is stored on this phone. Export it any time, or erase it all.", style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = { export.launch("walk-buddy-export.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Export my data (CSV)") }
+        OutlinedButton(onClick = a.onExport, modifier = Modifier.fillMaxWidth()) { Text("Export my data (CSV)") }
         Button(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete all my data") }
     }
     if (confirm) {
@@ -288,7 +313,7 @@ private fun DataSection(vm: AppViewModel) {
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
-                    vm.deleteEverything { Toast.makeText(ctx, "All data deleted", Toast.LENGTH_SHORT).show() }
+                    a.deleteEverything { Toast.makeText(ctx, "All data deleted", Toast.LENGTH_SHORT).show() }
                 }) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
@@ -297,23 +322,23 @@ private fun DataSection(vm: AppViewModel) {
 }
 
 @Composable
-private fun AppearanceSection(vm: AppViewModel, s: Settings) {
+private fun AppearanceSection(a: SettingsActions, s: Settings) {
     SectionCard("Look and feel") {
         Text("Distances in", style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = s.unitSystem == UnitSystem.Metric, onClick = { vm.saveSettings { setUnits(UnitSystem.Metric) } }, label = { Text("Kilometres") }, modifier = Modifier.heightIn(min = 48.dp))
-            FilterChip(selected = s.unitSystem == UnitSystem.Imperial, onClick = { vm.saveSettings { setUnits(UnitSystem.Imperial) } }, label = { Text("Miles") }, modifier = Modifier.heightIn(min = 48.dp))
+            FilterChip(selected = s.unitSystem == UnitSystem.Metric, onClick = { a.save { setUnits(UnitSystem.Metric) } }, label = { Text("Kilometres") }, modifier = Modifier.heightIn(min = 48.dp))
+            FilterChip(selected = s.unitSystem == UnitSystem.Imperial, onClick = { a.save { setUnits(UnitSystem.Imperial) } }, label = { Text("Miles") }, modifier = Modifier.heightIn(min = 48.dp))
         }
         if (android.os.Build.VERSION.SDK_INT >= 31) {
-            ToggleRow("Use my wallpaper colours", "Material You colours instead of Walk Buddy's dusk palette.", s.dynamicColor) { on -> vm.saveSettings { setDynamicColor(on) } }
+            ToggleRow("Use my wallpaper colours", "Material You colours instead of Walk Buddy's dusk palette.", s.dynamicColor) { on -> a.save { setDynamicColor(on) } }
         }
-        ToggleRow("Reduce motion", "Numbers jump instead of counting up, and there is no confetti or flicker. Also follows Android's animation setting.", s.reduceMotion) { on -> vm.saveSettings { setReduceMotion(on) } }
-        ToggleRow("Haptics", "Small vibrations for pings, reactions and reaching your goal.", s.haptics) { on -> vm.saveSettings { setHaptics(on) } }
+        ToggleRow("Reduce motion", "Numbers jump instead of counting up, and there is no confetti or flicker. Also follows Android's animation setting.", s.reduceMotion) { on -> a.save { setReduceMotion(on) } }
+        ToggleRow("Haptics", "Small vibrations for pings, reactions and reaching your goal.", s.haptics) { on -> a.save { setHaptics(on) } }
     }
 }
 
 @Composable
-private fun StepLengthSection(vm: AppViewModel, s: Settings) {
+private fun StepLengthSection(a: SettingsActions, s: Settings) {
     val ctx = LocalContext.current
     var cm by remember(s.stepLengthM) { mutableStateOf((s.stepLengthM * 100).toFloat().coerceIn(40f, 120f)) }
     SectionCard("Step length") {
@@ -323,35 +348,35 @@ private fun StepLengthSection(vm: AppViewModel, s: Settings) {
             modifier = Modifier.semantics { contentDescription = "Step length in centimetres" },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { vm.saveSettings { setStepLength(cm.toInt() / 100.0) } }) { Text("Save") }
-            OutlinedButton(onClick = { vm.calibrateStepLength { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() } }) { Text("Calibrate from my last walk") }
+            Button(onClick = { a.save { setStepLength(cm.toInt() / 100.0) } }) { Text("Save") }
+            OutlinedButton(onClick = { a.calibrate { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() } }) { Text("Calibrate from my last walk") }
         }
         if (s.calibratedStepLengthM != null) {
-            TextButton(onClick = { vm.saveSettings { setStepLength(null) } }) { Text("Go back to the estimate from my height") }
+            TextButton(onClick = { a.save { setStepLength(null) } }) { Text("Go back to the estimate from my height") }
         }
         Disclaimer("A typical step is 60 to 80 cm. A walk of at least 120 m with GPS gives the best calibration.")
     }
 }
 
 @Composable
-private fun QuietHoursSection(vm: AppViewModel, s: Settings) {
+private fun QuietHoursSection(a: SettingsActions, s: Settings) {
     var from by remember(s.quietFromHour) { mutableStateOf(s.quietFromHour.toFloat()) }
     var to by remember(s.quietToHour) { mutableStateOf(s.quietToHour.toFloat()) }
     SectionCard("Quiet hours") {
         ToggleRow("Silence reminders and nudges", "Walk date and anniversary reminders, sitting breaks and walk nudges wait until the quiet hours end.", s.quietEnabled) { on ->
-            vm.saveSettings { setQuietHours(on, from.toInt(), to.toInt()) }
+            a.save { setQuietHours(on, from.toInt(), to.toInt()) }
         }
         if (s.quietEnabled) {
             Text("From %02d:00".format(from.toInt()), style = MaterialTheme.typography.bodyMedium)
             Slider(
                 value = from, onValueChange = { from = it }, valueRange = 0f..23f, steps = 22,
-                onValueChangeFinished = { vm.saveSettings { setQuietHours(true, from.toInt(), to.toInt()) } },
+                onValueChangeFinished = { a.save { setQuietHours(true, from.toInt(), to.toInt()) } },
                 modifier = Modifier.semantics { contentDescription = "Quiet hours start" },
             )
             Text("Until %02d:00".format(to.toInt()), style = MaterialTheme.typography.bodyMedium)
             Slider(
                 value = to, onValueChange = { to = it }, valueRange = 0f..23f, steps = 22,
-                onValueChangeFinished = { vm.saveSettings { setQuietHours(true, from.toInt(), to.toInt()) } },
+                onValueChangeFinished = { a.save { setQuietHours(true, from.toInt(), to.toInt()) } },
                 modifier = Modifier.semantics { contentDescription = "Quiet hours end" },
             )
         }
@@ -359,8 +384,8 @@ private fun QuietHoursSection(vm: AppViewModel, s: Settings) {
 }
 
 @Composable
-private fun DemoSection(vm: AppViewModel, s: Settings) {
+private fun DemoSection(a: SettingsActions, s: Settings) {
     SectionCard("Demo mode") {
-        ToggleRow("Show demo data", "Sample steps, badges and a pretend buddy named Sam. Works with no permissions and saves nothing. Your real data is untouched.", s.demoMode) { on -> vm.setDemoMode(on) }
+        ToggleRow("Show demo data", "Sample steps, badges and a pretend buddy named Sam. Works with no permissions and saves nothing. Your real data is untouched.", s.demoMode) { on -> a.setDemoMode(on) }
     }
 }

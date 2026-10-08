@@ -22,6 +22,7 @@ fun newPaparazzi() = Paparazzi(
     deviceConfig = DeviceConfig.PIXEL_5,
     theme = "android:Theme.Material.Light.NoActionBar",
     showSystemUi = false,
+    snapshotHandler = PngHandler(),
 )
 
 /** One screenshot of [content] inside the real app theme. [heightPx] lets long scrolling screens render in full. */

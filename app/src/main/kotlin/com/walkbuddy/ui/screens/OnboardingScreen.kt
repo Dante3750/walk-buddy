@@ -64,14 +64,43 @@ private const val PAGES = 3
 @Composable
 fun OnboardingScreen(onName: (String) -> Unit, onUnits: (UnitSystem) -> Unit, onFinish: (demo: Boolean) -> Unit) {
     val perms = rememberPermState()
-    val reduce = WbTheme.motion.reduceMotion
     var page by remember { mutableIntStateOf(0) }
     var name by remember { mutableStateOf("") }
     var units by remember { mutableStateOf(UnitSystem.Metric) }
+    var shown by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { delay(350); shown = 6_284 }
     val askActivity = rememberPermissionRequester(perms)
     val askNotifications = rememberPermissionRequester(perms)
 
     BackHandler(enabled = page > 0) { page -= 1 }
+
+    OnboardingContent(
+        page = page, name = name, onNameChange = { name = it.take(24) }, units = units,
+        onUnits = { units = it; onUnits(it) }, heroSteps = shown,
+        activityGranted = perms.activity, notificationsGranted = perms.notifications,
+        onAllowActivity = { askActivity(PermState.ACTIVITY) }, onAllowNotifications = { askNotifications(PermState.NOTIFICATIONS) },
+        onContinue = { if (page == 0) onName(name.trim()); page += 1 },
+        onBack = { page -= 1 }, onFinish = onFinish,
+    )
+}
+
+@Composable
+fun OnboardingContent(
+    page: Int,
+    name: String,
+    onNameChange: (String) -> Unit,
+    units: UnitSystem,
+    onUnits: (UnitSystem) -> Unit,
+    heroSteps: Int,
+    activityGranted: Boolean,
+    notificationsGranted: Boolean,
+    onAllowActivity: () -> Unit,
+    onAllowNotifications: () -> Unit,
+    onContinue: () -> Unit,
+    onBack: () -> Unit,
+    onFinish: (demo: Boolean) -> Unit,
+) {
+    val reduce = WbTheme.motion.reduceMotion
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.SpaceBetween) {
         AnimatedContent(
@@ -84,10 +113,8 @@ fun OnboardingScreen(onName: (String) -> Unit, onUnits: (UnitSystem) -> Unit, on
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 when (p) {
                     0 -> {
-                        var shown by remember { mutableIntStateOf(0) }
-                        LaunchedEffect(Unit) { delay(350); shown = 6_284 }
                         StepHero(
-                            steps = shown, goal = 8_000, buddies = listOf(RingBuddy("preview", "Sam", 5_200, 8_000)),
+                            steps = heroSteps, goal = 8_000, buddies = listOf(RingBuddy("preview", "Sam", 5_200, 8_000)),
                             walking = true, maxSize = 270.dp,
                         )
                         Text("Walk Buddy", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
@@ -96,7 +123,7 @@ fun OnboardingScreen(onName: (String) -> Unit, onUnits: (UnitSystem) -> Unit, on
                             style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         OutlinedTextField(
-                            value = name, onValueChange = { name = it.take(24) }, label = { Text("What should your buddy call you?") },
+                            value = name, onValueChange = onNameChange, label = { Text("What should your buddy call you?") },
                             singleLine = true, modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -104,18 +131,18 @@ fun OnboardingScreen(onName: (String) -> Unit, onUnits: (UnitSystem) -> Unit, on
                         Text("Make it yours", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                         Text("Distances in", style = MaterialTheme.typography.titleMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = units == UnitSystem.Metric, onClick = { units = UnitSystem.Metric; onUnits(units) }, label = { Text("Kilometres") }, modifier = Modifier.heightIn(min = 48.dp))
-                            FilterChip(selected = units == UnitSystem.Imperial, onClick = { units = UnitSystem.Imperial; onUnits(units) }, label = { Text("Miles") }, modifier = Modifier.heightIn(min = 48.dp))
+                            FilterChip(selected = units == UnitSystem.Metric, onClick = { onUnits(UnitSystem.Metric) }, label = { Text("Kilometres") }, modifier = Modifier.heightIn(min = 48.dp))
+                            FilterChip(selected = units == UnitSystem.Imperial, onClick = { onUnits(UnitSystem.Imperial) }, label = { Text("Miles") }, modifier = Modifier.heightIn(min = 48.dp))
                         }
                         PermissionCard(
                             title = "Count my steps",
                             body = "Android calls this physical activity. Walk Buddy reads your phone's built-in step counter. Nothing leaves your phone.",
-                            granted = perms.activity, allow = { askActivity(PermState.ACTIVITY) },
+                            granted = activityGranted, allow = onAllowActivity,
                         )
                         PermissionCard(
                             title = "Gentle notifications",
                             body = "For the walk-in-progress notice and reminders you choose. Quiet hours and quiet mode are in Settings.",
-                            granted = perms.notifications, allow = { askNotifications(PermState.NOTIFICATIONS) },
+                            granted = notificationsGranted, allow = onAllowNotifications,
                         )
                         Text(
                             "Location is only asked for when you start a walk, and sharing stops when the walk ends.",
@@ -148,14 +175,14 @@ fun OnboardingScreen(onName: (String) -> Unit, onUnits: (UnitSystem) -> Unit, on
             Spacer(Modifier.size(4.dp))
             if (page < PAGES - 1) {
                 Button(
-                    onClick = { if (page == 0) onName(name.trim()); page += 1 },
+                    onClick = onContinue,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 ) { Text("Continue") }
             } else {
                 Button(onClick = { onFinish(false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Start walking") }
                 OutlinedButton(onClick = { onFinish(true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Look around with demo data first") }
             }
-            if (page > 0) TextButton(onClick = { page -= 1 }) { Text("Back") }
+            if (page > 0) TextButton(onClick = onBack) { Text("Back") }
         }
     }
 }

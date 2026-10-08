@@ -132,7 +132,7 @@ jobs:
       - name: Render screenshots (Paparazzi)
         run: |
           set -o pipefail
-          gradle :app:recordPaparazziDebug --stacktrace 2>&1 | tee shots.log
+          gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee shots.log
 
       - name: Summarize failures
         if: always()
@@ -142,10 +142,7 @@ jobs:
         if: always()
         run: |
           mkdir -p out
-          find app/build app/src/test -name '*.png' -path '*snapshots*' 2>/dev/null | head -200 | while read -r f; do
-            n=$(basename "$f" | sed -E 's/^.*Test_//')
-            cp "$f" "out/$n"
-          done
+          cp app/build/shots/*.png out/ 2>/dev/null || true
           ls -la out
 
       - name: Upload screenshots
@@ -156,6 +153,7 @@ jobs:
           path: |
             out/*.png
             shots.log
+            app/build/reports/tests/
           if-no-files-found: ignore
 
       - name: Publish to ci-screenshots branch

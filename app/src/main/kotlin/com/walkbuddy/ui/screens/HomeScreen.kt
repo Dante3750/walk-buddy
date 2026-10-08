@@ -128,123 +128,39 @@ fun HomeScreen(vm: AppViewModel, wide: Boolean) {
         return
     }
 
-    val hero: @Composable () -> Unit = {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                StepHero(steps = h.verifiedSteps, goal = h.goal, buddies = h.buddies, walking = h.walking)
-                ConfettiBurst(active = burst, onDone = { burst = false }, modifier = Modifier.matchParentSize())
-            }
-            VerifiedChip(h.verifiedSteps, h.rawSteps)
-            BuddyLeadRow(h.buddies, h.verifiedSteps)
-            if (Hero.goalReached(h.verifiedSteps, h.goal)) {
-                Text(
-                    "You reached today's goal. Lovely.",
-                    Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center,
+    HomeContent(
+        h = h,
+        greeting = greeting(java.time.LocalTime.now().hour, settings?.displayName.orEmpty()),
+        wide = wide,
+        locationGranted = perms.location,
+        burst = burst,
+        onBurstDone = { burst = false },
+        a = HomeActions(
+            onGentle = { vm.setGentleToday(it) },
+            onRest = { vm.setRestToday(it) },
+            onShare = {
+                ShareCard.share(
+                    ctx,
+                    ShareSpec(
+                        kicker = if (Hero.goalReached(h.verifiedSteps, h.goal)) "GOAL REACHED" else "TODAY",
+                        bigNumber = Hero.thousands(h.verifiedSteps), caption = "steps",
+                        fraction = Hero.fraction(h.verifiedSteps, h.goal).toFloat(),
+                        lines = listOf(
+                            "Goal ${Hero.thousands(h.goal)}",
+                            Units.distance(h.distanceM, h.unit) + "  /  " + (if (h.activeIsEstimate) "about " else "") + h.activeMin + " active min",
+                            if (h.streak.current > 1) "${h.streak.current} day streak" else "",
+                        ).filter { it.isNotEmpty() },
+                    ),
                 )
-            }
-            val dist = Units.distanceAmount(h.distanceM, h.unit)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatPill("Distance", dist.value, dist.unit, Modifier.weight(1f))
-                StatPill("Active", (if (h.activeIsEstimate) "~" else "") + h.activeMin, "min", Modifier.weight(1f))
-                h.calories?.let { StatPill("Energy, estimate", "${(it.lowKcal + it.highKcal) / 2}", "kcal", Modifier.weight(1f)) }
-            }
-        }
-    }
-
-    val details: @Composable () -> Unit = {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (h.demo) DemoBanner(vm)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = h.gentle, onClick = { vm.setGentleToday(!h.gentle) },
-                    label = { Text(if (h.gentle) "Gentle day is on" else "Gentle day") },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-                FilterChip(
-                    selected = h.restDay, onClick = { vm.setRestToday(!h.restDay) },
-                    label = { Text(if (h.restDay) "Rest day is on" else "Rest day") },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-                OutlinedButton(
-                    onClick = {
-                        ShareCard.share(
-                            ctx,
-                            ShareSpec(
-                                kicker = if (Hero.goalReached(h.verifiedSteps, h.goal)) "GOAL REACHED" else "TODAY",
-                                bigNumber = Hero.thousands(h.verifiedSteps), caption = "steps",
-                                fraction = Hero.fraction(h.verifiedSteps, h.goal).toFloat(),
-                                lines = listOf(
-                                    "Goal ${Hero.thousands(h.goal)}",
-                                    Units.distance(h.distanceM, h.unit) + "  /  " + (if (h.activeIsEstimate) "about " else "") + h.activeMin + " active min",
-                                    if (h.streak.current > 1) "${h.streak.current} day streak" else "",
-                                ).filter { it.isNotEmpty() },
-                            ),
-                        )
-                    },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("Share today") }
-            }
-            if (h.gentle) Disclaimer("${GentleDay.COPY} Today's goal: ${Hero.thousands(h.goal)} steps.")
-            if (h.restDay) Text("Today is a rest day. Moving is optional.", color = MaterialTheme.colorScheme.primary)
-
-            StreakCard(h.flame)
-
-            if (h.countdown != null) {
-                SectionCard(null) {
-                    h.daysTogether?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-                    Text(h.countdown, style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-
-            SectionCard("Active minutes this week") {
-                LinearProgressIndicator(
-                    progress = { h.guidance.fraction.toFloat() },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 8.dp).semantics { contentDescription = "${h.guidance.equivMin} of 150 active minutes this week" },
-                    color = MaterialTheme.colorScheme.secondary,
-                )
-                Text("${h.guidance.equivMin} of ${WeeklyGuidance.TARGET_MIN} minutes", style = MaterialTheme.typography.titleMedium)
-                Disclaimer(Copy.ACTIVE_GUIDANCE)
-            }
-
-            SectionCard("Walk") {
-                Button(onClick = { withLocation { vm.startLobby(null) } }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Start a walk together") }
-                OutlinedButton(onClick = { joinDialog = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Join with a code or link") }
-                OutlinedButton(onClick = { withLocation { vm.startLobby(null, solo = true) } }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walk solo") }
-                if (!perms.location) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
-                Disclaimer(Copy.SHARE_LOCATION)
-            }
-
-            Disclaimer(Copy.WELLNESS)
-            Disclaimer("Verified steps leave out time spent in vehicles or on a bike, and anything faster than walking pace.")
-        }
-    }
-
-    val header: @Composable () -> Unit = {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(greeting(java.time.LocalTime.now().hour, settings?.displayName.orEmpty()), style = MaterialTheme.typography.headlineSmall)
-            Text(
-                h.daysTogether ?: "One step, then another.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-
-    if (wide) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                header()
-                hero()
-            }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { details() }
-        }
-    } else {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            header()
-            hero()
-            details()
-        }
-    }
+            },
+            onStartTogether = { withLocation { vm.startLobby(null) } },
+            onJoin = { joinDialog = true },
+            onSolo = { withLocation { vm.startLobby(null, solo = true) } },
+            onDemoGoal = { vm.demoReachGoal() },
+            onDemoWalk = { vm.startDemoWalk() },
+            onUseRealData = { vm.setDemoMode(false) },
+        ),
+    )
 
     if (joinDialog) {
         AlertDialog(
@@ -281,8 +197,138 @@ fun HomeScreen(vm: AppViewModel, wide: Boolean) {
     }
 }
 
+
+/** Everything the home screen can do, as plain callbacks, so [HomeContent] can be rendered without a ViewModel. */
+class HomeActions(
+    val onGentle: (Boolean) -> Unit = {},
+    val onRest: (Boolean) -> Unit = {},
+    val onShare: () -> Unit = {},
+    val onStartTogether: () -> Unit = {},
+    val onJoin: () -> Unit = {},
+    val onSolo: () -> Unit = {},
+    val onDemoGoal: () -> Unit = {},
+    val onDemoWalk: () -> Unit = {},
+    val onUseRealData: () -> Unit = {},
+)
+
 @Composable
-private fun DemoBanner(vm: AppViewModel) {
+fun HomeContent(
+    h: HomeUi,
+    greeting: String,
+    wide: Boolean,
+    locationGranted: Boolean,
+    burst: Boolean,
+    onBurstDone: () -> Unit,
+    a: HomeActions,
+) {
+    val hero: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                StepHero(steps = h.verifiedSteps, goal = h.goal, buddies = h.buddies, walking = h.walking)
+                ConfettiBurst(active = burst, onDone = onBurstDone, modifier = Modifier.matchParentSize())
+            }
+            VerifiedChip(h.verifiedSteps, h.rawSteps)
+            BuddyLeadRow(h.buddies, h.verifiedSteps)
+            if (Hero.goalReached(h.verifiedSteps, h.goal)) {
+                Text(
+                    "You reached today's goal. Lovely.",
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center,
+                )
+            }
+            val dist = Units.distanceAmount(h.distanceM, h.unit)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatPill("Distance", dist.value, dist.unit, Modifier.weight(1f))
+                StatPill("Active", (if (h.activeIsEstimate) "~" else "") + h.activeMin, "min", Modifier.weight(1f))
+                h.calories?.let { StatPill("Energy, estimate", "${(it.lowKcal + it.highKcal) / 2}", "kcal", Modifier.weight(1f)) }
+            }
+        }
+    }
+
+    val details: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (h.demo) DemoBanner(a)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = h.gentle, onClick = { a.onGentle(!h.gentle) },
+                    label = { Text(if (h.gentle) "Gentle day is on" else "Gentle day") },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+                FilterChip(
+                    selected = h.restDay, onClick = { a.onRest(!h.restDay) },
+                    label = { Text(if (h.restDay) "Rest day is on" else "Rest day") },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+                OutlinedButton(
+                    onClick = a.onShare,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Share today") }
+            }
+            if (h.gentle) Disclaimer("${GentleDay.COPY} Today's goal: ${Hero.thousands(h.goal)} steps.")
+            if (h.restDay) Text("Today is a rest day. Moving is optional.", color = MaterialTheme.colorScheme.primary)
+
+            StreakCard(h.flame)
+
+            if (h.countdown != null) {
+                SectionCard(null) {
+                    h.daysTogether?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+                    Text(h.countdown, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
+            SectionCard("Active minutes this week") {
+                LinearProgressIndicator(
+                    progress = { h.guidance.fraction.toFloat() },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 8.dp).semantics { contentDescription = "${h.guidance.equivMin} of 150 active minutes this week" },
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+                Text("${h.guidance.equivMin} of ${WeeklyGuidance.TARGET_MIN} minutes", style = MaterialTheme.typography.titleMedium)
+                Disclaimer(Copy.ACTIVE_GUIDANCE)
+            }
+
+            SectionCard("Walk") {
+                Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Start a walk together") }
+                OutlinedButton(onClick = a.onJoin, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Join with a code or link") }
+                OutlinedButton(onClick = a.onSolo, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walk solo") }
+                if (!locationGranted) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
+                Disclaimer(Copy.SHARE_LOCATION)
+            }
+
+            Disclaimer(Copy.WELLNESS)
+            Disclaimer("Verified steps leave out time spent in vehicles or on a bike, and anything faster than walking pace.")
+        }
+    }
+
+    val header: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(greeting, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                h.daysTogether ?: "One step, then another.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    if (wide) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                header()
+                hero()
+            }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { details() }
+        }
+    } else {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            header()
+            hero()
+            details()
+        }
+    }
+
+}
+
+@Composable
+private fun DemoBanner(a: HomeActions) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Demo mode", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -291,9 +337,9 @@ private fun DemoBanner(vm: AppViewModel) {
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { vm.demoReachGoal() }) { Text("Reach the goal") }
-                OutlinedButton(onClick = { vm.startDemoWalk() }) { Text("Try a demo walk") }
-                TextButton(onClick = { vm.setDemoMode(false) }) { Text("Use my real data") }
+                Button(onClick = a.onDemoGoal) { Text("Reach the goal") }
+                OutlinedButton(onClick = a.onDemoWalk) { Text("Try a demo walk") }
+                TextButton(onClick = a.onUseRealData) { Text("Use my real data") }
             }
         }
     }

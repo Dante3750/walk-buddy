@@ -65,14 +65,68 @@ import com.walkbuddy.ui.components.SectionCard
 import com.walkbuddy.ui.components.StatLine
 import com.walkbuddy.ui.components.ToggleRow
 
+/** Everything the lobby, live walk and summary can do, as plain callbacks (so they render without a ViewModel). */
+class WalkActions(
+    val onStartWalking: () -> Unit = {},
+    val onLeave: () -> Unit = {},
+    val onQuiet: (Boolean) -> Unit = {},
+    val onShareInvite: (code: String, link: String) -> Unit = { _, _ -> },
+    val onEndWalk: () -> Unit = {},
+    val onDismissReaction: () -> Unit = {},
+    val onDismissBanner: () -> Unit = {},
+    /** Returns false when rate limited. */
+    val onReaction: (Reaction) -> Boolean = { true },
+    val onPing: () -> Unit = {},
+    val onMood: (mood: Int, note: String) -> Unit = { _, _ -> },
+    val onShareSummary: () -> Unit = {},
+    val onFinish: () -> Unit = {},
+    val onRateLimited: () -> Unit = {},
+)
+
 /** Full-screen flow shown whenever a session is not idle: lobby, live walk, summary. */
 @Composable
 fun WalkFlow(vm: AppViewModel, ui: SessionUi) {
+    val ctx = LocalContext.current
+    val home by vm.home.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val unit = settings?.unitSystem ?: com.walkbuddy.domain.UnitSystem.Metric
+    val wide = com.walkbuddy.ui.rememberWidthClass() != com.walkbuddy.ui.WidthClass.Compact
+    val a = WalkActions(
+        onStartWalking = { vm.startWalking() },
+        onLeave = { vm.leaveLobby() },
+        onQuiet = { vm.setQuiet(it) },
+        onShareInvite = { code, link ->
+            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, "Walk with me! Open Walk Buddy and join with code $code, or tap: $link")
+            ctx.startActivity(Intent.createChooser(send, "Share invite"))
+        },
+        onEndWalk = { vm.endWalk() },
+        onDismissReaction = { vm.dismissReaction() },
+        onDismissBanner = { vm.dismissBanner() },
+        onReaction = { vm.sendReaction(it) },
+        onPing = { vm.sendPing() },
+        onMood = { m, n -> vm.addMood(m, n, ui.walkId) },
+        onShareSummary = {
+            val s = ui.summary
+            val card = ui.highlights
+            if (s != null && card != null) {
+                ShareCard.share(
+                    ctx,
+                    ShareSpec(
+                        kicker = card.title.uppercase(), bigNumber = Hero.thousands(s.verifiedSteps.toInt()), caption = "steps",
+                        fraction = (s.togetherPct ?: 100) / 100f, lines = card.lines.drop(1).take(4),
+                    ),
+                )
+            }
+        },
+        onFinish = { vm.finishSummary() },
+        onRateLimited = { Toast.makeText(ctx, "One moment before the next one", Toast.LENGTH_SHORT).show() },
+    )
     Column(Modifier.fillMaxSize()) {
         when (ui.phase) {
-            Phase.Lobby -> LobbyScreen(vm, ui)
-            Phase.Walking -> LiveScreen(vm, ui)
-            Phase.Summary -> SummaryScreen(vm, ui)
+            Phase.Lobby -> LobbyContent(ui, a)
+            Phase.Walking -> LiveContent(ui, home?.verifiedSteps, home?.goal, unit, wide, a)
+            Phase.Summary -> SummaryContent(ui, a)
             Phase.Idle -> Unit
         }
     }
@@ -88,8 +142,7 @@ fun WalkFlow(vm: AppViewModel, ui: SessionUi) {
 }
 
 @Composable
-private fun LobbyScreen(vm: AppViewModel, ui: SessionUi) {
-    val ctx = LocalContext.current
+fun LobbyContent(ui: SessionUi, a: WalkActions) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(if (ui.solo) "Solo walk" else "Your walk", style = MaterialTheme.typography.titleLarge)
 
@@ -104,11 +157,7 @@ private fun LobbyScreen(vm: AppViewModel, ui: SessionUi) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { QrView(link) }
                     Disclaimer("Scan with your buddy's phone camera, or send them the link or the code.")
                     Button(
-                        onClick = {
-                            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                                .putExtra(Intent.EXTRA_TEXT, "Walk with me! Open Walk Buddy and join with code ${ui.code}, or tap: $link")
-                            ctx.startActivity(Intent.createChooser(send, "Share invite"))
-                        },
+                        onClick = { a.onShareInvite(ui.code, link) },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Share invite link") }
                 }
@@ -135,28 +184,23 @@ private fun LobbyScreen(vm: AppViewModel, ui: SessionUi) {
             ui.note?.let { Text(it) }
         }
 
-        ToggleRow("Quiet mode", "Mute all nudges for this walk", ui.quiet) { vm.setQuiet(it) }
+        ToggleRow("Quiet mode", "Mute all nudges for this walk", ui.quiet) { a.onQuiet(it) }
 
-        Button(onClick = { vm.startWalking() }, modifier = Modifier.fillMaxWidth()) { Text("Start walking") }
-        OutlinedButton(onClick = { vm.leaveLobby() }, modifier = Modifier.fillMaxWidth()) { Text("Leave") }
+        Button(onClick = a.onStartWalking, modifier = Modifier.fillMaxWidth()) { Text("Start walking") }
+        OutlinedButton(onClick = a.onLeave, modifier = Modifier.fillMaxWidth()) { Text("Leave") }
         Disclaimer(Copy.SHARING_ENDS)
     }
 }
 
 @Composable
-private fun LiveScreen(vm: AppViewModel, ui: SessionUi) {
+fun LiveContent(ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions) {
     var confirmEnd by remember { mutableStateOf(false) }
     val w = ui.walk
-    val home by vm.home.collectAsStateWithLifecycle()
-    val settings by vm.settings.collectAsStateWithLifecycle()
-    val unit = settings?.unitSystem ?: com.walkbuddy.domain.UnitSystem.Metric
-    val ctx = LocalContext.current
-    val wide = com.walkbuddy.ui.rememberWidthClass() != com.walkbuddy.ui.WidthClass.Compact
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (w == null) {
             EmptyState("Getting ready", "Looking for a GPS fix. Stepping outside helps.")
-            OutlinedButton(onClick = { vm.endWalk() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
+            OutlinedButton(onClick = a.onEndWalk, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
             return@Column
         }
         ui.reaction?.let { r ->
@@ -167,7 +211,7 @@ private fun LiveScreen(vm: AppViewModel, ui: SessionUi) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(r.reaction.emoji, fontSize = 30.sp)
                     Text("${r.from}: ${r.reaction.label}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    TextButton(onClick = { vm.dismissReaction() }) { Text("OK") }
+                    TextButton(onClick = a.onDismissReaction) { Text("OK") }
                 }
             }
         }
@@ -178,15 +222,14 @@ private fun LiveScreen(vm: AppViewModel, ui: SessionUi) {
             ) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    TextButton(onClick = { vm.dismissBanner() }) { Text("OK") }
+                    TextButton(onClick = a.onDismissBanner) { Text("OK") }
                 }
             }
         }
 
         // The big number stays central here too: today's steps on the ring, buddies at their own progress.
-        val h = home
-        val heroSteps = h?.verifiedSteps ?: w.myVerifiedSteps.toInt()
-        val heroGoal = h?.goal ?: 6000
+        val heroSteps = todaySteps ?: w.myVerifiedSteps.toInt()
+        val heroGoal = todayGoal ?: 6000
         val hero: @Composable () -> Unit = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 StepHero(steps = heroSteps, goal = heroGoal, buddies = ui.buddyDaily, walking = true, caption = "steps today", maxSize = if (wide) 320.dp else 340.dp)
@@ -227,7 +270,7 @@ private fun LiveScreen(vm: AppViewModel, ui: SessionUi) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Reaction.values().forEach { r ->
                             AssistChip(
-                                onClick = { if (!vm.sendReaction(r)) Toast.makeText(ctx, "One moment before the next one", Toast.LENGTH_SHORT).show() },
+                                onClick = { if (!a.onReaction(r)) a.onRateLimited() },
                                 label = { Text(r.emoji + "  " + r.label) },
                                 modifier = Modifier.heightIn(min = 48.dp),
                             )
@@ -247,9 +290,9 @@ private fun LiveScreen(vm: AppViewModel, ui: SessionUi) {
                     SectionCard(null) { Text("Nobody else is connected yet. They can still join with the code.") }
                 }
 
-                ToggleRow("Quiet mode", "Mute all nudges for this walk", ui.quiet) { vm.setQuiet(it) }
+                ToggleRow("Quiet mode", "Mute all nudges for this walk", ui.quiet) { a.onQuiet(it) }
                 if (ui.pingEnabled && w.buddies.isNotEmpty()) {
-                    OutlinedButton(onClick = { vm.sendPing() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Thinking of you") }
+                    OutlinedButton(onClick = a.onPing, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Thinking of you") }
                 }
                 Button(onClick = { confirmEnd = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("End walk") }
                 if (ui.demo) Disclaimer("Demo walk: nothing here is saved.")
@@ -271,7 +314,7 @@ private fun LiveScreen(vm: AppViewModel, ui: SessionUi) {
             onDismissRequest = { confirmEnd = false },
             title = { Text("End this walk?") },
             text = { Text("Live sharing stops right away and your summary is saved on this phone.") },
-            confirmButton = { TextButton(onClick = { confirmEnd = false; vm.endWalk() }) { Text("End walk") } },
+            confirmButton = { TextButton(onClick = { confirmEnd = false; a.onEndWalk() }) { Text("End walk") } },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep walking") } },
         )
     }
@@ -296,8 +339,7 @@ private fun BuddyCardView(b: BuddyCard, unit: com.walkbuddy.domain.UnitSystem) {
 }
 
 @Composable
-private fun SummaryScreen(vm: AppViewModel, ui: SessionUi) {
-    val ctx = LocalContext.current
+fun SummaryContent(ui: SessionUi, a: WalkActions) {
     val s = ui.summary
     val card = ui.highlights
     var moodSaved by remember { mutableStateOf(false) }
@@ -316,26 +358,18 @@ private fun SummaryScreen(vm: AppViewModel, ui: SessionUi) {
                 if (moodSaved) {
                     Text("Saved on this phone. Thank you.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 } else {
-                    MoodCheckIn(onSave = { m, n -> vm.addMood(m, n, ui.walkId); moodSaved = true })
+                    MoodCheckIn(onSave = { m, n -> a.onMood(m, n); moodSaved = true })
                     if (ui.demo) Disclaimer("Demo: check-ins are not kept.")
                 }
             }
 
             Button(
-                onClick = {
-                    ShareCard.share(
-                        ctx,
-                        ShareSpec(
-                            kicker = card.title.uppercase(), bigNumber = Hero.thousands(s.verifiedSteps.toInt()), caption = "steps",
-                            fraction = (s.togetherPct ?: 100) / 100f, lines = card.lines.drop(1).take(4),
-                        ),
-                    )
-                },
+                onClick = a.onShareSummary,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             ) { Text("Share highlights (stats only)") }
         }
         Disclaimer("Sharing has ended and no locations were kept anywhere but this phone.")
-        OutlinedButton(onClick = { vm.finishSummary() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
+        OutlinedButton(onClick = a.onFinish, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
     }
 }
 

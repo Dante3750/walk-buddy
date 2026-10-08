@@ -37,6 +37,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.data.Clock
+import com.walkbuddy.data.SpotRow
+import com.walkbuddy.domain.FavoriteSpot
 import com.walkbuddy.domain.AnniversaryCountdown
 import com.walkbuddy.domain.CalendarIntentSpec
 import com.walkbuddy.domain.Units
@@ -88,24 +90,71 @@ private fun pickDate(context: Context, onPicked: (LocalDate) -> Unit) {
     DatePickerDialog(context, { _, y, m, d -> onPicked(LocalDate.of(y, m + 1, d)) }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
 }
 
+class CoupleActions(
+    val onPickAnniversary: (label: String) -> Unit = {},
+    val onRemoveAnniversary: () -> Unit = {},
+    val onPlanDate: (title: String, weekly: Boolean) -> Unit = { _, _ -> },
+    val onCalendar: (WalkDate, Long) -> Unit = { _, _ -> },
+    val onDeleteDate: (Long) -> Unit = {},
+    val onShareSpot: (FavoriteSpot) -> Unit = {},
+    val onDeleteSpot: (Long) -> Unit = {},
+    /** Saves the current location under a name; [done] gets the result message ("Saved" on success). */
+    val onSaveSpot: (name: String, done: (String) -> Unit) -> Unit = { _, _ -> },
+)
+
 @Composable
 fun CoupleScreen(vm: AppViewModel) {
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val unit = settings?.unitSystem ?: UnitSystem.Metric
-    var annivLabel by remember(settings?.anniversaryLabel) { mutableStateOf(settings?.anniversaryLabel.orEmpty()) }
     val ctx = LocalContext.current
     val dates by vm.dates.collectAsStateWithLifecycle()
     val spots by vm.spots.collectAsStateWithLifecycle()
     val distance by vm.coupleDistanceM.collectAsStateWithLifecycle()
     val days by vm.coupleDays.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
+    CoupleContent(
+        anniversaryDate = settings?.anniversaryDate, anniversaryLabel = settings?.anniversaryLabel.orEmpty(),
+        unit = settings?.unitSystem ?: UnitSystem.Metric, dates = dates, spots = spots, distanceM = distance, coupleDays = days,
+        canShareSpots = session.phase != Phase.Idle && !session.solo, today = Clock.today(), nowMs = System.currentTimeMillis(),
+        a = CoupleActions(
+            onPickAnniversary = { label -> pickDate(ctx) { d -> vm.saveSettings { setAnniversary(d.toString(), label) } } },
+            onRemoveAnniversary = { vm.saveSettings { setAnniversary("", "") } },
+            onPlanDate = { title, weekly ->
+                pickDateTime(ctx) { ms ->
+                    val d = WalkDate(0, ms, 30, weekly, title.ifBlank { "Walk date" })
+                    vm.addDate(d)
+                    openCalendarInsert(ctx, WalkDatePlanner.toCalendarIntent(d))
+                }
+            },
+            onCalendar = { d, at -> openCalendarInsert(ctx, WalkDatePlanner.toCalendarIntent(d.copy(startMs = at))) },
+            onDeleteDate = { vm.deleteDate(it) },
+            onShareSpot = { vm.shareSpot(it) },
+            onDeleteSpot = { vm.deleteSpot(it) },
+            onSaveSpot = { name, done -> vm.saveSpotHere(name) { msg -> Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show(); done(msg) } },
+        ),
+    )
+}
+
+@Composable
+fun CoupleContent(
+    anniversaryDate: String?,
+    anniversaryLabel: String,
+    unit: UnitSystem,
+    dates: List<WalkDate>,
+    spots: List<SpotRow>,
+    distanceM: Double,
+    coupleDays: Set<Long>,
+    canShareSpots: Boolean,
+    today: Long,
+    nowMs: Long,
+    a: CoupleActions,
+) {
+    var annivLabel by remember(anniversaryLabel) { mutableStateOf(anniversaryLabel) }
     var title by remember { mutableStateOf("Walk date") }
     var weekly by remember { mutableStateOf(false) }
     var spotName by remember { mutableStateOf("") }
-    val streak = TogetherStreak.lastDays(days, Clock.today())
-    val odo = Odometer.state(distance)
-    val now = System.currentTimeMillis()
-    val upcoming = WalkDatePlanner.upcoming(dates, now)
+    val streak = TogetherStreak.lastDays(coupleDays, today)
+    val odo = Odometer.state(distanceM)
+    val upcoming = WalkDatePlanner.upcoming(dates, nowMs)
     val dateFmt = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -121,22 +170,22 @@ fun CoupleScreen(vm: AppViewModel) {
         }
 
         SectionCard("Our day") {
-            val date = AnniversaryCountdown.parse(settings?.anniversaryDate)
+            val date = AnniversaryCountdown.parse(anniversaryDate)
             if (date == null) {
                 Text("Add an anniversary or a date to look forward to. It stays on this phone, and you get one gentle reminder the day before.", style = MaterialTheme.typography.bodyMedium)
             } else {
                 AnniversaryCountdown.daysTogether(date, LocalDate.now())?.let { Text("Day ${com.walkbuddy.domain.Hero.thousands(it.toInt())} together", style = MaterialTheme.typography.headlineSmall) }
-                Text(AnniversaryCountdown.info(date, settings?.anniversaryLabel.orEmpty(), LocalDate.now()).text, style = MaterialTheme.typography.titleMedium)
+                Text(AnniversaryCountdown.info(date, anniversaryLabel, LocalDate.now()).text, style = MaterialTheme.typography.titleMedium)
             }
             OutlinedTextField(value = annivLabel, onValueChange = { annivLabel = it.take(30) }, label = { Text("What are we counting to?") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { pickDate(ctx) { d -> vm.saveSettings { setAnniversary(d.toString(), annivLabel) } } }) { Text(if (date == null) "Pick the date" else "Change date") }
-                if (date != null) TextButton(onClick = { vm.saveSettings { setAnniversary("", "") } }) { Text("Remove") }
+                Button(onClick = { a.onPickAnniversary(annivLabel) }) { Text(if (date == null) "Pick the date" else "Change date") }
+                if (date != null) TextButton(onClick = a.onRemoveAnniversary) { Text("Remove") }
             }
         }
 
         SectionCard("Our distance") {
-            Text(Units.longDistance(distance, unit) + " walked together", style = MaterialTheme.typography.headlineMedium)
+            Text(Units.longDistance(distanceM, unit) + " walked together", style = MaterialTheme.typography.headlineMedium)
             val next = odo.next
             if (next != null) {
                 LinearProgressIndicator(
@@ -161,8 +210,8 @@ fun CoupleScreen(vm: AppViewModel) {
                         Text(d.title, style = MaterialTheme.typography.titleMedium)
                         Text(dateFmt.format(Date(at)) + if (d.weekly) " (every week)" else "", style = MaterialTheme.typography.bodySmall)
                     }
-                    TextButton(onClick = { openCalendarInsert(ctx, WalkDatePlanner.toCalendarIntent(d.copy(startMs = at))) }) { Text("Calendar") }
-                    TextButton(onClick = { vm.deleteDate(d.id) }) { Text("Remove") }
+                    TextButton(onClick = { a.onCalendar(d, at) }) { Text("Calendar") }
+                    TextButton(onClick = { a.onDeleteDate(d.id) }) { Text("Remove") }
                 }
             }
             OutlinedTextField(value = title, onValueChange = { title = it.take(40) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -171,13 +220,7 @@ fun CoupleScreen(vm: AppViewModel) {
                 Text("Repeat every week")
             }
             Button(
-                onClick = {
-                    pickDateTime(ctx) { ms ->
-                        val d = WalkDate(0, ms, 30, weekly, title.ifBlank { "Walk date" })
-                        vm.addDate(d)
-                        openCalendarInsert(ctx, WalkDatePlanner.toCalendarIntent(d))
-                    }
-                },
+                onClick = { a.onPlanDate(title, weekly) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Plan a walk date") }
         }
@@ -187,14 +230,14 @@ fun CoupleScreen(vm: AppViewModel) {
             spots.forEach { row ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(row.spot.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    if (session.phase != Phase.Idle && !session.solo) TextButton(onClick = { vm.shareSpot(row.spot) }) { Text("Share") }
-                    TextButton(onClick = { vm.deleteSpot(row.id) }) { Text("Remove") }
+                    if (canShareSpots) TextButton(onClick = { a.onShareSpot(row.spot) }) { Text("Share") }
+                    TextButton(onClick = { a.onDeleteSpot(row.id) }) { Text("Remove") }
                 }
             }
             OutlinedTextField(value = spotName, onValueChange = { spotName = it.take(40) }, label = { Text("Name this place") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedButton(
                 enabled = spotName.isNotBlank(),
-                onClick = { vm.saveSpotHere(spotName) { msg -> Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show(); if (msg == "Saved") spotName = "" } },
+                onClick = { a.onSaveSpot(spotName) { msg -> if (msg == "Saved") spotName = "" } },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save where I am now") }
             Disclaimer("Coordinates are stored only on this phone. Sharing sends one name and one point to your partner.")

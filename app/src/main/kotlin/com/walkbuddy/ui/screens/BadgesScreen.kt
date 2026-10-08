@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.ui.AppViewModel
+import com.walkbuddy.ui.BadgeRow
 import com.walkbuddy.ui.components.BadgeMedal
 import java.text.DateFormat
 import java.util.Date
@@ -35,6 +36,11 @@ import java.util.Date
 @Composable
 fun BadgesScreen(vm: AppViewModel, onBack: () -> Unit) {
     val badges by vm.badges.collectAsStateWithLifecycle()
+    BadgesContent(badges, onBack)
+}
+
+@Composable
+fun BadgesContent(badges: List<BadgeRow>, onBack: () -> Unit) {
     val fmt = DateFormat.getDateInstance(DateFormat.MEDIUM)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

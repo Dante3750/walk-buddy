@@ -38,6 +38,8 @@ import com.walkbuddy.domain.Units
 import com.walkbuddy.share.ShareCard
 import com.walkbuddy.share.ShareSpec
 import com.walkbuddy.ui.AppViewModel
+import com.walkbuddy.ui.TrendsUi
+import com.walkbuddy.domain.WeeklyReport
 import com.walkbuddy.ui.components.BarChart
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
@@ -61,8 +63,36 @@ fun TrendsScreen(vm: AppViewModel, onBadges: () -> Unit, onRecap: () -> Unit) {
     val ctx = LocalContext.current
     val is24 = android.text.format.DateFormat.is24HourFormat(ctx)
     var moodDialog by remember { mutableStateOf(false) }
-    val t = trends
 
+    TrendsContent(
+        r = r, bars = bars, t = trends, badgeText = "${badges.count { it.earned }}/${badges.size}", is24 = is24,
+        onBadges = onBadges, onRecap = onRecap,
+        onShareWeek = { t ->
+            ShareCard.share(
+                ctx,
+                ShareSpec("OUR WEEK", t.ourWeek.headlineValue, t.ourWeek.headlineLabel, r.avgTogetherPct?.div(100f) ?: 0f, t.ourWeek.lines.take(4)),
+            )
+        },
+        onShiftMonth = { vm.shiftMonth(it) },
+        onLogMood = { moodDialog = true },
+    )
+
+    if (moodDialog) MoodDialog(onSave = { m, n -> vm.addMood(m, n, null) }, onDismiss = { moodDialog = false })
+}
+
+@Composable
+fun TrendsContent(
+    r: WeeklyReport,
+    bars: List<Pair<Long, Int>>,
+    t: TrendsUi?,
+    badgeText: String,
+    is24: Boolean,
+    onBadges: () -> Unit,
+    onRecap: () -> Unit,
+    onShareWeek: (TrendsUi) -> Unit,
+    onShiftMonth: (Int) -> Unit,
+    onLogMood: () -> Unit,
+) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Trends", style = MaterialTheme.typography.headlineSmall)
         if (t == null) {
@@ -74,7 +104,7 @@ fun TrendsScreen(vm: AppViewModel, onBadges: () -> Unit, onRecap: () -> Unit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onRecap, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Weekly recap") }
             OutlinedButton(onClick = onBadges, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                Text("Badges ${badges.count { it.earned }}/${badges.size}")
+                Text("Badges $badgeText")
             }
         }
 
@@ -100,12 +130,7 @@ fun TrendsScreen(vm: AppViewModel, onBadges: () -> Unit, onRecap: () -> Unit) {
             Text(t.ourWeek.headlineLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             t.ourWeek.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
             OutlinedButton(
-                onClick = {
-                    ShareCard.share(
-                        ctx,
-                        ShareSpec("OUR WEEK", t.ourWeek.headlineValue, t.ourWeek.headlineLabel, r.avgTogetherPct?.div(100f) ?: 0f, t.ourWeek.lines.take(4)),
-                    )
-                },
+                onClick = { onShareWeek(t) },
                 modifier = Modifier.heightIn(min = 48.dp),
             ) { Text("Share our week") }
             Disclaimer("Stats only. No map, no places.")
@@ -123,9 +148,9 @@ fun TrendsScreen(vm: AppViewModel, onBadges: () -> Unit, onRecap: () -> Unit) {
                 dayLabel = { LocalDate.ofEpochDay(it).format(DAY_FMT) },
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { vm.shiftMonth(-1) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Earlier") }
+                TextButton(onClick = { onShiftMonth(-1) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Earlier") }
                 Text("${t.month.goalDays} goal days", style = MaterialTheme.typography.labelLarge)
-                TextButton(enabled = t.canGoForward, onClick = { vm.shiftMonth(1) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Later") }
+                TextButton(enabled = t.canGoForward, onClick = { onShiftMonth(1) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Later") }
             }
             Disclaimer("Warmer colours mean closer to, or past, that day's goal.")
         }
@@ -149,7 +174,7 @@ fun TrendsScreen(vm: AppViewModel, onBadges: () -> Unit, onRecap: () -> Unit) {
                     }
                 }
             }
-            OutlinedButton(onClick = { moodDialog = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Log how I feel") }
+            OutlinedButton(onClick = onLogMood, modifier = Modifier.heightIn(min = 48.dp)) { Text("Log how I feel") }
             Disclaimer(MoodInsights.CAVEAT)
         }
 
@@ -165,6 +190,4 @@ fun TrendsScreen(vm: AppViewModel, onBadges: () -> Unit, onRecap: () -> Unit) {
         }
         Disclaimer(Copy.WELLNESS)
     }
-
-    if (moodDialog) MoodDialog(onSave = { m, n -> vm.addMood(m, n, null) }, onDismiss = { moodDialog = false })
 }
