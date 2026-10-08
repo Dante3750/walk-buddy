@@ -2,8 +2,10 @@
 /**
  * Walk Buddy server. Two kinds of room, both in memory only:
  *
- * 1. PAIR rooms (partner mode, unchanged): 2-4 phones that share a 6-character code exchange WebRTC
- *    offer/answer/ICE messages. After that the phones talk directly. Steps and locations never come here.
+ * 1. PAIR rooms (partner mode): 2-4 phones that share a 6-character code exchange WebRTC offer/answer/ICE messages
+ *    and then talk directly. Because a direct link can fail on strict mobile networks (CGNAT, symmetric NAT) and there is
+ *    no TURN server, a pair room can also carry a FALLBACK relay (`pdata`): the same tiny partner messages the phones
+ *    would send over the data channel, forwarded to the other phone(s) in the room and forgotten. Nothing is stored or logged.
  * 2. GROUP rooms (open group walks): a P2P mesh does not scale to dozens of people, so the server relays small
  *    validated location/step updates to the other members (up to ~50). It keeps no location: an update is
  *    forwarded and forgotten. The only per-room data are member ids, nicknames, host settings and timers.
@@ -16,6 +18,9 @@ const { WebSocketServer } = require('ws');
 const CODE_RE = /^[2-9A-HJ-NP-Z]{6}$/;
 const PEER_RE = /^[A-Za-z0-9_-]{1,32}$/;
 const RELAY_KINDS = new Set(['offer', 'answer', 'ice']);
+/** Partner message types that may ride the fallback relay (the same ones the data channel carries). */
+const PAIR_DATA_TYPES = new Set(['hello', 'pos', 'ping', 'spot', 'react', 'day', 'pin', 'unpin', 'bye']);
+const SERVER_VERSION = 2;
 const GROUP_HOST_KINDS = new Set(['approve', 'deny', 'kick', 'close-room', 'settings', 'pin', 'unpin']);
 const KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -27,6 +32,8 @@ function cleanText(raw, max, fallback) {
   const s = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e]/g, '').trim().slice(0, max);
   return s || fallback;
 }
+/** An optional small avatar code (style and colour picked by the member); anything else is dropped. */
+const cleanAv = (v) => (Number.isInteger(v) && v >= 0 && v <= 255 ? v : undefined);
 const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
 
 /**
@@ -65,6 +72,8 @@ const DEFAULTS = {
   sweepMs: 30 * 1000,
   maxMessageBytes: 20 * 1024, // transport-level cap
   maxPayloadChars: 16 * 1024, // SDP / candidate payload cap
+  maxPairDataChars: 1200, // one fallback-relay partner message (a position is about 200)
+  pairDataMinIntervalMs: 120, // faster than this from one connection is dropped quietly
   joinTimeoutMs: 10 * 1000,
   burst: 60, // per-connection token bucket
   refillPerSec: 20,
@@ -100,7 +109,8 @@ function createServer(options = {}) {
   const httpServer = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
+      // Aggregate only. `v` lets you check that a redeploy finished (2 = partner fallback relay + reconnect takeover).
+      res.end(JSON.stringify({ ok: true, rooms: rooms.size, v: SERVER_VERSION }));
       return;
     }
     const landing = req.method === 'GET' && /^\/g\/([2-9A-HJ-NP-Za-hj-np-z]{6})\/?$/.exec((req.url || '').split('?')[0]);
@@ -160,6 +170,7 @@ function createServer(options = {}) {
     if (room.kind === 'group') return leaveGroup(ws, room, 'left');
     if (room.peers.get(ws.peerId) === ws) {
       room.peers.delete(ws.peerId);
+      room.keys.delete(ws.peerId);
       for (const other of room.peers.values()) send(other, { t: 'peer-left', peer: ws.peerId });
     }
     if (room.peers.size === 0) rooms.delete(ws.room);
@@ -188,18 +199,34 @@ function createServer(options = {}) {
     if (ws.room) return fail(ws, 'already_joined');
     if (typeof msg.code !== 'string' || !CODE_RE.test(msg.code)) return fail(ws, 'bad_code');
     if (typeof msg.peer !== 'string' || !PEER_RE.test(msg.peer)) return fail(ws, 'bad_peer');
+    // Optional per-session secret: it proves "same phone" so a phone whose connection silently died can take its slot back
+    // at once instead of waiting for the server to notice the dead socket (which is what used to make reconnects fail).
+    let pkey = null;
+    if (msg.key !== undefined && msg.key !== null) {
+      if (typeof msg.key !== 'string' || !KEY_RE.test(msg.key)) return fail(ws, 'bad_key');
+      pkey = msg.key;
+    }
     if (!joinAllowed(ws.ip)) return fail(ws, 'too_many_joins', true);
     let room = rooms.get(msg.code);
     if (!room) {
       if (rooms.size >= cfg.maxRooms) return fail(ws, 'server_busy');
-      room = { kind: 'pair', peers: new Map(), createdAt: Date.now(), lastActive: Date.now() };
+      room = { kind: 'pair', peers: new Map(), keys: new Map(), createdAt: Date.now(), lastActive: Date.now() };
       rooms.set(msg.code, room);
     }
     if (room.kind !== 'pair') return fail(ws, 'wrong_mode');
-    if (room.peers.size >= cfg.maxPeers) return fail(ws, 'room_full');
-    if (room.peers.has(msg.peer)) return fail(ws, 'id_taken');
+    const old = room.peers.get(msg.peer);
+    if (old) {
+      if (!pkey || room.keys.get(msg.peer) !== pkey) return fail(ws, 'id_taken');
+      // Same phone coming back: take over the slot quietly (the partner is not told the phone left and returned).
+      room.peers.delete(msg.peer);
+      old.room = null;
+      try { old.close(4000, 'replaced'); } catch { /* already gone */ }
+    } else if (room.peers.size >= cfg.maxPeers) {
+      return fail(ws, 'room_full');
+    }
     const existing = [...room.peers.keys()];
     room.peers.set(msg.peer, ws);
+    if (pkey) room.keys.set(msg.peer, pkey); else room.keys.delete(msg.peer);
     room.lastActive = Date.now();
     ws.room = msg.code;
     ws.peerId = msg.peer;
@@ -221,6 +248,37 @@ function createServer(options = {}) {
   }
 
 
+  /**
+   * Fallback relay for partner messages. The phones normally talk over the WebRTC data channel; when that cannot connect (strict
+   * mobile networks without a TURN server) or drops, the same small message goes here and is forwarded to the other phone(s) in the
+   * room. It is validated (a known partner message type, a small JSON object), forwarded as is and forgotten: no storage, no logging.
+   */
+  function handlePairData(ws, msg) {
+    const room = ws.room && rooms.get(ws.room);
+    if (!room || room.kind !== 'pair') return fail(ws, 'not_joined');
+    const data = msg.data;
+    if (typeof data !== 'string' || data.length === 0 || data.length > cfg.maxPairDataChars) return fail(ws, 'bad_message');
+    let obj;
+    try { obj = JSON.parse(data); } catch { obj = null; }
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj) || typeof obj.t !== 'string' || !PAIR_DATA_TYPES.has(obj.t)) {
+      fail(ws, 'bad_message');
+      if (++ws.bad >= cfg.maxBadMessages) ws.close(1008, 'too_many_bad_messages');
+      return;
+    }
+    const now = Date.now();
+    if (now - ws.lastPairData < cfg.pairDataMinIntervalMs) return; // too fast: dropped quietly, not an error
+    ws.lastPairData = now;
+    room.lastActive = now;
+    // Fixed envelope; the sender id is stamped by the server.
+    const out = JSON.stringify({ t: 'pdata', from: ws.peerId, data });
+    if (typeof msg.to === 'string') {
+      const target = room.peers.get(msg.to);
+      if (target && target !== ws && target.readyState === target.OPEN) target.send(out);
+      return;
+    }
+    for (const other of room.peers.values()) if (other !== ws && other.readyState === other.OPEN) other.send(out);
+  }
+
   // ====================== group rooms ======================
 
   const gsend = (m, obj) => send(m.ws, obj);
@@ -232,7 +290,9 @@ function createServer(options = {}) {
     }
   }
   const publicSettings = (room) => ({ approval: room.approval, goalSteps: room.goalSteps, title: room.title, max: cfg.maxGroupMembers });
-  const roster = (room) => [...room.members].map(([peer, m]) => ({ peer, name: m.name, host: peer === room.hostPeer }));
+  const roster = (room) => [...room.members].map(([peer, m]) => (m.av === undefined
+    ? { peer, name: m.name, host: peer === room.hostPeer }
+    : { peer, name: m.name, host: peer === room.hostPeer, av: m.av }));
   const expiresInSec = (room) => Math.max(0, Math.round((room.expiresAt - Date.now()) / 1000));
 
   function newGroupCode() {
@@ -263,16 +323,16 @@ function createServer(options = {}) {
     if (errorCode) log(errorCode, {});
   }
 
-  function admit(ws, room, code, peer, name, key) {
+  function admit(ws, room, code, peer, name, key, av) {
     const wasHost = peer === room.hostPeer;
-    room.members.set(peer, { ws, name, key });
+    room.members.set(peer, { ws, name, key, av });
     room.known.set(peer, key);
     room.lastActive = Date.now();
     ws.room = code; ws.peerId = peer; ws.kind = 'group'; ws.pendingJoin = false; ws.lastUpd = 0;
     clearTimeout(ws.joinTimer);
     send(ws, { t: 'group-joined', code, you: peer, host: room.hostPeer, roster: roster(room), settings: publicSettings(room), expiresInSec: expiresInSec(room) });
     if (wasHost) { room.hostAwaySince = null; broadcast(room, { t: 'host-back' }, peer); }
-    broadcast(room, { t: 'member-joined', peer, name, host: wasHost }, peer);
+    broadcast(room, av === undefined ? { t: 'member-joined', peer, name, host: wasHost } : { t: 'member-joined', peer, name, host: wasHost, av }, peer);
   }
 
   function handleGroupCreate(ws, msg) {
@@ -292,7 +352,7 @@ function createServer(options = {}) {
       title: cleanText(msg.title, 40, ''), createdAt: now, lastActive: now, expiresAt: now + ttlMin * 60 * 1000, hostAwaySince: null,
     };
     rooms.set(code, room);
-    admit(ws, room, code, msg.peer, cleanText(msg.name, 24, 'Host'), msg.key);
+    admit(ws, room, code, msg.peer, cleanText(msg.name, 24, 'Host'), msg.key, cleanAv(msg.av));
   }
 
   function handleGroupJoin(ws, msg) {
@@ -322,7 +382,7 @@ function createServer(options = {}) {
     if (room.approval && !trusted) {
       if (room.pending.size >= cfg.maxPending) return fail(ws, 'too_many_pending');
       if (room.pending.has(peer)) return fail(ws, 'id_taken');
-      room.pending.set(peer, { ws, name, key: msg.key, at: Date.now() });
+      room.pending.set(peer, { ws, name, key: msg.key, av: cleanAv(msg.av), at: Date.now() });
       ws.room = msg.code; ws.peerId = peer; ws.kind = 'group'; ws.pendingJoin = true;
       clearTimeout(ws.joinTimer);
       send(ws, { t: 'pending' });
@@ -330,7 +390,7 @@ function createServer(options = {}) {
       if (host) send(host.ws, { t: 'join-request', peer, name });
       return;
     }
-    admit(ws, room, msg.code, peer, name, msg.key);
+    admit(ws, room, msg.code, peer, name, msg.key, cleanAv(msg.av));
   }
 
   function leaveGroup(ws, room, reason) {
@@ -386,7 +446,7 @@ function createServer(options = {}) {
         if (!p) return fail(ws, 'unknown_peer');
         room.pending.delete(target);
         if (room.members.size >= cfg.maxGroupMembers) { send(p.ws, { t: 'error', code: 'room_full' }); p.ws.room = null; p.ws.pendingJoin = false; return fail(ws, 'room_full'); }
-        admit(p.ws, room, code, target, p.name, p.key);
+        admit(p.ws, room, code, target, p.name, p.key, p.av);
         return;
       }
       case 'deny': {
@@ -444,6 +504,7 @@ function createServer(options = {}) {
     ws.kind = null;
     ws.pendingJoin = false;
     ws.lastUpd = 0;
+    ws.lastPairData = 0;
     ws.joinTimer = setTimeout(() => { if (!ws.room) ws.close(1008, 'join_timeout'); }, cfg.joinTimeoutMs);
 
     ws.on('pong', () => { ws.alive = true; });
@@ -461,6 +522,7 @@ function createServer(options = {}) {
       if (msg.t === 'group-create') return handleGroupCreate(ws, msg);
       if (msg.t === 'group-join') return handleGroupJoin(ws, msg);
       if (msg.t === 'upd') return handleUpd(ws, msg);
+      if (msg.t === 'pdata') return handlePairData(ws, msg);
       if (GROUP_HOST_KINDS.has(msg.t)) return handleHost(ws, msg);
       if (msg.t === 'leave') { leave(ws); return; }
       if (RELAY_KINDS.has(msg.t)) return handleRelay(ws, msg);
@@ -535,7 +597,7 @@ function createServer(options = {}) {
   };
 }
 
-module.exports = { createServer, CODE_RE, PEER_RE, DEFAULTS, cleanUpdate, cleanText };
+module.exports = { createServer, CODE_RE, PEER_RE, DEFAULTS, PAIR_DATA_TYPES, SERVER_VERSION, cleanUpdate, cleanText };
 
 if (require.main === module) {
   const srv = createServer({

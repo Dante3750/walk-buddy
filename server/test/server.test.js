@@ -274,7 +274,7 @@ test('health endpoint reports only an aggregate count; other paths 404', async (
   try {
     await join(url, 'K7M2QX', 'alice');
     const h = await (await fetch(`${http}/health`)).json();
-    assert.deepEqual(h, { ok: true, rooms: 1 });
+    assert.deepEqual(h, { ok: true, rooms: 1, v: 2 });
     assert.equal((await fetch(`${http}/rooms`)).status, 404);
   } finally { await srv.close(); }
 });

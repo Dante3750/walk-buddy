@@ -405,7 +405,7 @@ test('there is no directory: no listing endpoints, health is a bare count', asyn
   try {
     await createGroup(url, 'alice');
     for (const p of ['/groups', '/rooms', '/g', '/g/', '/api/groups', '/list', '/g/abc']) assert.equal((await fetch(base + p)).status, 404, p);
-    assert.deepEqual(await (await fetch(`${base}/health`)).json(), { ok: true, rooms: 1 });
+    assert.deepEqual(await (await fetch(`${base}/health`)).json(), { ok: true, rooms: 1, v: 2 });
   } finally { await srv.close(); }
 });
 
