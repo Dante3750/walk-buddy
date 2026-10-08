@@ -2,7 +2,9 @@
 
 package com.walkbuddy.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
+import com.walkbuddy.ui.components.staggerIn
+androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -97,12 +99,12 @@ fun GroupCreateContent(s: Settings?, onBack: () -> Unit, onCreate: (CreateGroupO
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle("Create a group walk", subtitle = "Anyone you invite can join, even after you have started.")
-        SectionCard("The basics") {
+        SectionCard("The basics", Modifier.staggerIn(0)) {
             OutlinedTextField(value = nick, onValueChange = { nick = it.take(24) }, label = { Text("Your name in the group") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = title, onValueChange = { title = it.take(40) }, label = { Text("Group name (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             ToggleRow("I approve each person", "Off: anyone with the QR or code joins straight away. On: you tap Let in for each request.", approval) { approval = it }
         }
-        SectionCard("How long it lasts") {
+        SectionCard("How long it lasts", Modifier.staggerIn(1)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(1, 2, 4, 8).forEach { h ->
                     FilterChip(selected = hours == h, onClick = { hours = h }, label = { Text("$h h") }, modifier = Modifier.heightIn(min = 48.dp))
@@ -110,8 +112,8 @@ fun GroupCreateContent(s: Settings?, onBack: () -> Unit, onCreate: (CreateGroupO
             }
             Disclaimer("The group closes by itself after this, or sooner if you end it. Nothing is kept on the server.")
         }
-        SectionCard("A goal for everyone together (optional)") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionCard("A goal for everyone together (optional)", Modifier.staggerIn(2)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GoalChoices.take(4).forEach { g ->
                     FilterChip(selected = goal == g, onClick = { goal = g }, label = { Text(if (g == 0) "No goal" else "%,d".format(g)) }, modifier = Modifier.heightIn(min = 48.dp))
                 }

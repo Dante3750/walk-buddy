@@ -43,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -71,6 +72,11 @@ import com.walkbuddy.rtc.SignalingState
 import com.walkbuddy.session.GroupPhase
 import com.walkbuddy.session.GroupUi
 import com.walkbuddy.ui.AppViewModel
+import com.walkbuddy.ui.components.AnimatedCount
+import com.walkbuddy.ui.components.Avatar
+import com.walkbuddy.ui.components.SegmentedProgress
+import com.walkbuddy.ui.components.StatusPill
+import com.walkbuddy.ui.components.TagChip
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
 import com.walkbuddy.ui.components.MapColors
@@ -176,7 +182,8 @@ fun GroupLiveContent(ui: GroupUi, unit: UnitSystem, tiles: Boolean, a: GroupActi
             }
         }
         Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { confirm = true }, Modifier.weight(1f).heightIn(min = 52.dp)) { Text(if (ui.iAmHost) "End walk" else "Leave group") }
+            if (ui.iAmHost) Button(onClick = { confirm = true }, Modifier.weight(1f).heightIn(min = 52.dp)) { Text("End walk") }
+            else OutlinedButton(onClick = { confirm = true }, Modifier.weight(1f).heightIn(min = 52.dp)) { Text("Leave group") }
         }
     }
     if (confirm) EndDialog(ui, onDismiss = { confirm = false }, a = a)
@@ -200,7 +207,7 @@ private fun GroupHeader(ui: GroupUi) {
             ui.connection == SignalingState.Connecting -> "Connecting"
             else -> "Reconnecting"
         }
-        Text(status, style = MaterialTheme.typography.labelMedium, color = if (ui.connection == SignalingState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
+        StatusPill(status, if (ui.connection == SignalingState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
     }
 }
 
@@ -212,6 +219,9 @@ private fun WaitingContent(ui: GroupUi, a: GroupActions) {
             subtitle = if (ui.waitingForApproval) "The host has been asked to let you in. You can leave at any time." else "One moment.",
         )
         SectionCard(null) {
+            if (ui.connection != SignalingState.Failed) {
+                androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().clip(CircleShape).semantics { contentDescription = "Connecting" })
+            }
             Text(
                 when (ui.connection) {
                     SignalingState.Failed -> ui.note ?: "Having trouble reaching the server. Retrying."
@@ -377,7 +387,7 @@ private fun GroupSummaryCard(w: GroupState, unit: UnitSystem) {
             Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "Group together score ${w.together.scorePct} percent" },
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.Bottom,
         ) {
-            Text("${w.together.scorePct}%", style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 44.sp, lineHeight = 48.sp), color = MaterialTheme.colorScheme.secondary)
+            AnimatedCount(w.together.scorePct, style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 44.sp, lineHeight = 48.sp), color = MaterialTheme.colorScheme.secondary, suffix = "%")
             Text("  of this walk together", Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         val facts = buildList {
@@ -393,8 +403,16 @@ private fun GroupSummaryCard(w: GroupState, unit: UnitSystem) {
 private fun GoalCard(w: GroupState) {
     val g = w.goal
     SectionCard("Our steps together") {
-        Text("%,d".format(g.totalSteps) + if (g.goal > 0) " of %,d".format(g.goal) else "", style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 32.sp, lineHeight = 36.sp))
-        if (g.goal > 0) WbProgress(g.fraction.toFloat(), Modifier.semantics { contentDescription = "${(g.fraction * 100).toInt()} percent of the group goal" })
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AnimatedCount(g.totalSteps.toInt(), style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 36.sp, lineHeight = 40.sp))
+            if (g.goal > 0) Text("of %,d".format(g.goal), Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (g.goal > 0) {
+            // Each person's steps are a piece of the same bar: it shows the group adding up, never who is ahead.
+            val parts = listOf(w.myVerifiedSteps.toFloat() to MaterialTheme.colorScheme.primary) +
+                w.members.map { it.steps.toFloat() to MapColors.forId(it.id) }
+            SegmentedProgress(parts, g.fraction.toFloat(), Modifier.semantics { contentDescription = "${(g.fraction * 100).toInt()} percent of the group goal" })
+        }
         Disclaimer(CollectiveSteps.message(g) + " Everyone's steps add up; nobody is ranked.")
     }
 }
@@ -416,12 +434,14 @@ private fun PersonRow(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
     ) {
         Row(Modifier.padding(12.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(40.dp).background(color.copy(alpha = if (dim) 0.4f else 1f), CircleShape), contentAlignment = Alignment.Center) {
-                Text(name.trim().take(1).uppercase().ifEmpty { "?" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Avatar(name, color, size = 44.dp, dim = dim)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                if (tags.isNotEmpty()) Text(tags.joinToString("  ·  "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                if (tags.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        tags.forEach { TagChip(it, color = if (it == "A little apart") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary) }
+                    }
+                }
                 Text(line1, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(line2, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -450,10 +470,18 @@ private fun GroupInviteTab(ui: GroupUi, w: GroupState?, a: GroupActions) {
         SectionCard("Invite people") {
             val code = ui.code
             if (code != null) {
-                Text(
-                    code, fontSize = 44.sp, style = com.walkbuddy.ui.theme.BigNumberStyle, letterSpacing = 6.sp, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Group code ${code.toList().joinToString(" ")}" },
-                )
+                Row(
+                    Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "Group code ${code.toList().joinToString(" ")}" },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                ) {
+                    code.forEach { ch ->
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                            Box(Modifier.size(width = 40.dp, height = 54.dp), contentAlignment = Alignment.Center) {
+                                Text(ch.toString(), style = com.walkbuddy.ui.theme.BigNumberStyle, fontSize = 30.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                    }
+                }
             }
             if (link != null && GroupLink.fitsQr(link)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -532,7 +560,10 @@ fun GroupSummaryContent(ui: GroupUi, a: GroupActions) {
                 ),
             )
             SectionCard("As a group") {
-                Text("%,d steps together".format(ui.groupSteps), style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnimatedCount(ui.groupSteps.toInt(), style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 36.sp, lineHeight = 40.sp))
+                    Text("steps together", Modifier.padding(bottom = 5.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 s.togetherPct?.let { Text("$it% of the walk spent close together. Longest stretch: ${Format.duration(s.longestTogetherMs)}.") }
                 Disclaimer("${s.buddyCount} ${if (s.buddyCount == 1) "other person" else "other people"} walked with you. Group details are not saved; your own walk is saved on this phone.")
             }

@@ -77,6 +77,8 @@ import com.walkbuddy.ui.components.BuddyLeadRow
 import com.walkbuddy.ui.components.ConfettiBurst
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
+import com.walkbuddy.ui.components.ModeCard
+import androidx.compose.ui.semantics.heading
 import com.walkbuddy.ui.components.SectionCard
 import com.walkbuddy.ui.components.StatPill
 import com.walkbuddy.ui.components.StepHero
@@ -316,8 +318,13 @@ fun HomeContent(
 
     val walk: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionCard("Walk with partner") {
-                Text("Two people, a private link between your phones. The couple walk, as before.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Walk together", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 4.dp).semantics { heading() })
+            ModeCard(
+                title = "Walk with partner", tagline = "2 people  ·  phone to phone, private",
+                gradient = listOf(Color(0xFFC2305F), Color(0xFF5E1D55)),
+                glyphs = listOf(Color(0xFFE0557E), Color(0xFF8E3A8A)),
+            ) {
+                Text("A private link between two phones. A tiny server only introduces you; your steps and location go phone to phone.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
                     Text("Start a walk together", style = MaterialTheme.typography.titleMedium)
                 }
@@ -326,8 +333,12 @@ fun HomeContent(
                     FilledTonalButton(onClick = a.onScan, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Scan QR", textAlign = TextAlign.Center) }
                 }
             }
-            SectionCard("Open group walk") {
-                Text("Walk with a crowd. Anyone with the QR code, link or code can join, even after you have started, and everyone appears on one map.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ModeCard(
+                title = "Open group walk", tagline = "Up to about 50  ·  one shared map",
+                gradient = listOf(Color(0xFF0E7C7B), Color(0xFF16466B)),
+                glyphs = listOf(Color(0xFF2FA9A3), Color(0xFF3C7DBE), Color(0xFF6A6FD0)),
+            ) {
+                Text("Anyone with the QR code, link or code can join, even after you have started. Everyone appears on one map.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = a.onCreateGroup, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
                     Text("Create a group", style = MaterialTheme.typography.titleMedium)
                 }

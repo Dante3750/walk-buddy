@@ -60,6 +60,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
 import com.walkbuddy.domain.Hero
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.border
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.TextStyle
 import com.walkbuddy.ui.theme.NumberStyle
 import com.walkbuddy.ui.theme.WbTheme
 import kotlinx.coroutines.delay
@@ -103,12 +110,125 @@ fun ScreenTitle(title: String, modifier: Modifier = Modifier, subtitle: String? 
     }
 }
 
-/** A thick, rounded progress bar. Pass a content description through [modifier] so it is announced. */
+/** A thick, rounded progress bar that eases to its value. Pass a content description through [modifier] so it is announced. */
 @Composable
 fun WbProgress(fraction: Float, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.secondary, height: Dp = 10.dp) {
-    val f = fraction.coerceIn(0f, 1f)
+    val target = fraction.coerceIn(0f, 1f)
+    val f by animateFloatAsState(target, if (WbTheme.motion.reduceMotion) snap() else tween(600, easing = FastOutSlowInEasing), label = "progress")
     Box(modifier.fillMaxWidth().height(height).clip(CircleShape).background(color.copy(alpha = 0.16f))) {
-        if (f > 0f) Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(CircleShape).background(color))
+        if (f > 0.001f) Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(CircleShape).background(color))
+    }
+}
+
+/** A progress bar made of coloured pieces, one per person, filling [fraction] of the track. Colour is never the only cue: pair it with text. */
+@Composable
+fun SegmentedProgress(parts: List<Pair<Float, Color>>, fraction: Float, modifier: Modifier = Modifier, height: Dp = 12.dp) {
+    val target = fraction.coerceIn(0f, 1f)
+    val f by animateFloatAsState(target, if (WbTheme.motion.reduceMotion) snap() else tween(600, easing = FastOutSlowInEasing), label = "segments")
+    val sum = parts.sumOf { it.first.toDouble() }.toFloat()
+    Box(modifier.fillMaxWidth().height(height).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))) {
+        if (f > 0.001f && sum > 0f) {
+            Row(Modifier.fillMaxHeight().fillMaxWidth(f)) {
+                parts.filter { it.first > 0f }.forEach { (w, c) -> Box(Modifier.weight(w).fillMaxHeight().background(c)) }
+            }
+        }
+    }
+}
+
+/** A whole number that counts up (or down) to its new value, with thousands separators. Snaps when reduce-motion is on. */
+@Composable
+fun AnimatedCount(value: Int, modifier: Modifier = Modifier, style: TextStyle = NumberStyle, color: Color = Color.Unspecified, suffix: String = "") {
+    val shown by animateIntAsState(value, if (WbTheme.motion.reduceMotion) snap() else tween(700, easing = FastOutSlowInEasing), label = "count")
+    Text(Hero.thousands(shown) + suffix, modifier, style = style, color = color, maxLines = 1)
+}
+
+/** Up to two initials from a name: "Meera Rao" gives "MR", "sam" gives "S". */
+fun initialsOf(name: String): String {
+    val parts = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    return when {
+        parts.isEmpty() -> "?"
+        parts.size == 1 -> parts[0].take(1).uppercase()
+        else -> (parts[0].take(1) + parts[1].take(1)).uppercase()
+    }
+}
+
+/** A round avatar with initials on a person colour. White initials sit on the dark palette, so contrast holds in both themes. */
+@Composable
+fun Avatar(name: String, color: Color, modifier: Modifier = Modifier, size: Dp = 44.dp, dim: Boolean = false) {
+    Box(
+        modifier.size(size).graphicsLayer { alpha = if (dim) 0.5f else 1f }.background(color, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(initialsOf(name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.38f).sp, maxLines = 1)
+    }
+}
+
+/** A plain person glyph (head and shoulders) on a coloured disc. Decorative: used where no real name exists to show. */
+@Composable
+fun PersonDot(color: Color, modifier: Modifier = Modifier, size: Dp = 36.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        drawCircle(color)
+        drawCircle(Color.White.copy(alpha = 0.95f), radius = w * 0.17f, center = Offset(w / 2, w * 0.40f))
+        drawArc(
+            Color.White.copy(alpha = 0.95f), 180f, 180f, true,
+            Offset(w * 0.24f, w * 0.60f), Size(w * 0.52f, w * 0.44f),
+        )
+    }
+}
+
+/** A small rounded status label with a leading dot, e.g. "Connected". */
+@Composable
+fun StatusPill(text: String, color: Color, modifier: Modifier = Modifier) {
+    Row(
+        modifier.clip(CircleShape).background(color.copy(alpha = 0.14f)).padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.size(8.dp).background(color, CircleShape))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+    }
+}
+
+/** A small tonal tag such as "Host" or "At the back". */
+@Composable
+fun TagChip(text: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
+    Text(
+        text, modifier.clip(CircleShape).background(color.copy(alpha = 0.13f)).padding(horizontal = 8.dp, vertical = 2.dp),
+        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+    )
+}
+
+/**
+ * A card for one way to walk: a coloured header band with the title, a short tagline and a few avatar glyphs, then the
+ * explanation and actions underneath. The band uses a fixed dark gradient with white text so contrast is the same in both themes.
+ */
+@Composable
+fun ModeCard(
+    title: String,
+    tagline: String,
+    gradient: List<Color>,
+    glyphs: List<Color>,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier.fillMaxWidth(), shape = CardShape, color = cardColor(), border = cardBorder()) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().background(Brush.linearGradient(gradient)).padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.semantics { heading() })
+                    Text(tagline, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.9f))
+                }
+                Row(Modifier.clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy((-10).dp)) {
+                    glyphs.forEach { c ->
+                        PersonDot(c, Modifier.border(2.dp, gradient.last(), CircleShape), size = 38.dp)
+                    }
+                }
+            }
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        }
     }
 }
 
