@@ -57,8 +57,9 @@ fun LocationNoticeCard(notice: LocationNotice, onAction: (LocationAction) -> Uni
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(notice.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
             Text(notice.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
-            if (notice.actionLabel != null && notice.action != LocationAction.None) {
-                Button(onClick = { onAction(notice.action) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(notice.actionLabel!!) }
+            val label = notice.actionLabel
+            if (label != null && notice.action != LocationAction.None) {
+                Button(onClick = { onAction(notice.action) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) }
             }
         }
     }

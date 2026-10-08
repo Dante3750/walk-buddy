@@ -232,9 +232,9 @@ fun WalkMap(
 
 private fun describe(people: List<MapPerson>, pin: MeetingPin?): String {
     val me = people.firstOrNull { it.isMe }?.pos
-    val others = people.filter { !it.isMe && it.pos != null }
-    val near = if (me == null) null else others.minByOrNull { Geo.haversine(me, it.pos!!) }
-    val nearText = if (me != null && near != null) " Nearest: ${near.name}, about ${Geo.haversine(me, near.pos!!).roundToInt()} metres from you." else ""
+    val placed = people.filter { !it.isMe }.mapNotNull { o -> o.pos?.let { p -> o to p } }
+    val near = if (me == null) null else placed.minByOrNull { (_, p) -> Geo.haversine(me, p) }
+    val nearText = if (me != null && near != null) " Nearest: ${near.first.name}, about ${Geo.haversine(me, near.second).roundToInt()} metres from you." else ""
     return "Map showing ${people.count { it.pos != null }} of ${people.size} people.$nearText" + if (pin != null) " A meeting point is set." else ""
 }
 

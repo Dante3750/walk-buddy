@@ -172,11 +172,12 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle(if (ui.solo) "Solo walk" else "Your walk", subtitle = if (ui.solo) "Just you and the evening." else "Share the code, then start when you are both here.")
 
-        if (!ui.solo && ui.code != null) {
+        val sessionCode = ui.code
+        if (!ui.solo && sessionCode != null) {
             SectionCard("Invite a buddy") {
                 Text(
-                    ui.code, fontSize = 44.sp, style = com.walkbuddy.ui.theme.BigNumberStyle, letterSpacing = 6.sp,
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Session code ${ui.code!!.toList().joinToString(" ")}" },
+                    sessionCode, fontSize = 44.sp, style = com.walkbuddy.ui.theme.BigNumberStyle, letterSpacing = 6.sp,
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Session code ${sessionCode.toList().joinToString(" ")}" },
                     textAlign = TextAlign.Center,
                 )
                 ui.joinLink?.let { link ->
@@ -187,7 +188,7 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
                     }
                     Disclaimer("Scan with your buddy's phone camera, or send them the link or the code.")
                     Button(
-                        onClick = { a.onShareInvite(ui.code, link) },
+                        onClick = { a.onShareInvite(sessionCode, link) },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Share invite link") }
                 }

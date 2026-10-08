@@ -343,7 +343,7 @@ private fun WalkSection(a: SettingsActions, s: Settings) {
     var radius by remember(s.radiusM) { mutableStateOf(s.radiusM.toFloat()) }
     SectionCard("Walking together") {
         Text("Your walker on the Track", style = MaterialTheme.typography.titleSmall)
-        com.walkbuddy.ui.components.AvatarPicker(s.avatar) { av -> a.save { setAvatar(av) } }
+        com.walkbuddy.ui.components.AvatarPicker(s.avatar, onChange = { av -> a.save { setAvatar(av) } })
         androidx.compose.material3.OutlinedButton(onClick = a.onOpenHistory, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walks together (history)") }
         Text("Together radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
         Slider(
