@@ -54,6 +54,8 @@ import com.walkbuddy.ui.AppViewModel
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
 import com.walkbuddy.ui.components.SectionCard
+import com.walkbuddy.ui.components.ScreenTitle
+import com.walkbuddy.ui.components.WbProgress
 import java.text.DateFormat
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -158,15 +160,11 @@ fun CoupleContent(
     val dateFmt = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Us", style = MaterialTheme.typography.headlineSmall)
-        Disclaimer("For two people walking together. No accounts: you simply share a session code when you walk.")
+        ScreenTitle("Us", subtitle = "For two people walking together. No accounts: you simply share a session code.")
 
         SectionCard("Together streak") {
             Text(streak.text, style = MaterialTheme.typography.titleMedium)
-            LinearProgressIndicator(
-                progress = { streak.daysTogether / streak.windowDays.toFloat() },
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = streak.text },
-            )
+            WbProgress(streak.daysTogether / streak.windowDays.toFloat(), Modifier.semantics { contentDescription = streak.text })
         }
 
         SectionCard("Our day") {
@@ -188,10 +186,7 @@ fun CoupleContent(
             Text(Units.longDistance(distanceM, unit) + " walked together", style = MaterialTheme.typography.headlineMedium)
             val next = odo.next
             if (next != null) {
-                LinearProgressIndicator(
-                    progress = { odo.fractionToNext.toFloat() },
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Progress to ${next.name}" },
-                )
+                WbProgress(odo.fractionToNext.toFloat(), Modifier.semantics { contentDescription = "Progress to ${next.name}" })
                 Text("Next: ${next.label}, " + Units.longDistance((odo.remainingToNextKm ?: 0.0) * 1000.0, unit) + " to go")
             } else {
                 Text("You have walked past every milestone. Lovely.")

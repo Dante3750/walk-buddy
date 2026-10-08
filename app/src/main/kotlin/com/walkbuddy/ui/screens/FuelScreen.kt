@@ -25,6 +25,7 @@ import com.walkbuddy.ui.FuelUi
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
 import com.walkbuddy.ui.components.SectionCard
+import com.walkbuddy.ui.components.ScreenTitle
 import com.walkbuddy.ui.components.ToggleRow
 
 /** Monthly "fuel" screen: an optional calorie ESTIMATE range and optional refuel ideas. Both can be hidden in Settings. */
@@ -45,7 +46,7 @@ fun FuelContent(
     onHot: (Boolean) -> Unit,
 ) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("This month", style = MaterialTheme.typography.titleLarge)
+        ScreenTitle("This month", subtitle = "Optional estimates and ideas. Hide them any time.")
         if (s == null || f == null) {
             EmptyState("Loading", "Putting your month together.")
             return@Column

@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +98,7 @@ fun RecapContent(slides: List<RecapSlide>, onBack: () -> Unit, onShare: (RecapSl
                     .semantics(mergeDescendants = true) { contentDescription = "${slide.title}. ${slide.big}. ${slide.caption}" },
                 contentAlignment = Alignment.Center,
             ) {
+                RecapBackdrop()
                 SlideBody(slide)
             }
         }
@@ -120,12 +122,23 @@ fun RecapContent(slides: List<RecapSlide>, onBack: () -> Unit, onShare: (RecapSl
     }
 }
 
+/** Big soft circles behind the number: depth and a hint of the ring, without a single extra element to read. */
+@Composable
+private fun RecapBackdrop() {
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val w = size.width
+        drawCircle(Color.White.copy(alpha = 0.08f), radius = w * 0.55f, center = Offset(w * 0.9f, size.height * 0.14f))
+        drawCircle(Color.White.copy(alpha = 0.06f), radius = w * 0.8f, center = Offset(w * 0.05f, size.height * 0.95f))
+        drawCircle(Color.White.copy(alpha = 0.14f), radius = w * 0.46f, center = Offset(w / 2, size.height / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.045f))
+    }
+}
+
 @Composable
 private fun SlideBody(slide: RecapSlide) {
     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(slide.title, style = MaterialTheme.typography.headlineSmall, color = Color.White, textAlign = TextAlign.Center)
         Text(
-            slide.big, style = BigNumberStyle, fontSize = if (slide.big.length > 7) 56.sp else 96.sp,
+            slide.big, style = BigNumberStyle, fontSize = if (slide.big.length > 7) 60.sp else 112.sp,
             color = Color.White, textAlign = TextAlign.Center, maxLines = 1, fontWeight = FontWeight.Black,
         )
         Text(slide.caption, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.92f), textAlign = TextAlign.Center)

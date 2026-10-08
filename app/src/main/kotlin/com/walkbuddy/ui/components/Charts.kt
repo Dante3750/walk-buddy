@@ -1,6 +1,14 @@
 package com.walkbuddy.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,13 +55,13 @@ import com.walkbuddy.ui.theme.WbTheme
 @Composable
 fun HourlyChart(profile: HourlyProfile, is24h: Boolean, modifier: Modifier = Modifier) {
     val wb = WbTheme.colors
-    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+    val dim = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
     val max = profile.max.coerceAtLeast(1)
     val desc = HourlyHistogram.bestText(profile, is24h)
     Column(modifier.fillMaxWidth().semantics { contentDescription = "Steps by hour of day. $desc" }) {
         Canvas(Modifier.fillMaxWidth().height(120.dp)) {
             val slot = size.width / 24f
-            val barW = slot * 0.62f
+            val barW = slot * 0.7f
             profile.perHour.forEachIndexed { h, v ->
                 val bh = (size.height * (v.toFloat() / max)).coerceAtLeast(3f)
                 val x = h * slot + (slot - barW) / 2
@@ -81,10 +89,11 @@ fun MonthHeatmap(model: MonthGridModel, monthLabel: String, dayLabel: (Long) -> 
     val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
     val outline = MaterialTheme.colorScheme.onSurface
     val measurer = rememberTextMeasurer()
-    val numberStyle = TextStyle(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+    val numberStyle = TextStyle(fontSize = 12.sp, fontFamily = com.walkbuddy.ui.theme.UiFamily, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f))
+    val darkNumberStyle = numberStyle.copy(color = Color(0xFF2A1B2E))
     var selected by remember(model.year, model.month) { mutableStateOf<Int?>(null) }
     val rows = (model.leadingBlanks + model.cells.size + 6) / 7
-    val levelColors = listOf(track, wb.ringStart.copy(alpha = 0.35f), wb.ringStart.copy(alpha = 0.8f), wb.ringMid, wb.ringEnd)
+    val levelColors = listOf(track, wb.ringStart.copy(alpha = 0.42f), wb.ringStart, wb.ringMid, wb.ringEnd)
     Column(
         modifier.fillMaxWidth().semantics {
             contentDescription = "$monthLabel: ${model.daysWithSteps} days with steps, ${model.goalDays} days reaching the goal"
@@ -115,9 +124,14 @@ fun MonthHeatmap(model: MonthGridModel, monthLabel: String, dayLabel: (Long) -> 
                 if (c.isToday || selected == i) {
                     drawRoundRect(outline, Offset(x + pad, y + pad), Size(cell - pad * 2, cell - pad * 2), CornerRadius(cell * 0.28f, cell * 0.28f), style = Stroke(2.dp.toPx()))
                 }
-                val layout = measurer.measure(c.dayOfMonth.toString(), numberStyle)
+                val layout = measurer.measure(c.dayOfMonth.toString(), if (!c.isFuture && c.level >= 2) darkNumberStyle else numberStyle)
                 drawText(layout, topLeft = Offset(x + (cell - layout.size.width) / 2f, y + (cell - layout.size.height) / 2f))
             }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Fewer steps", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            levelColors.forEach { Box(Modifier.size(14.dp).background(it, RoundedCornerShape(4.dp))) }
+            Text("More", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         val sel = selected?.let { model.cells.getOrNull(it) }
         Text(
@@ -133,7 +147,10 @@ fun BadgeMedal(id: BadgeId, earned: Boolean, fraction: Float, modifier: Modifier
     val wb = WbTheme.colors
     val locked = MaterialTheme.colorScheme.outlineVariant
     val fill = MaterialTheme.colorScheme.surfaceContainerHigh
-    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+    val reduce = WbTheme.motion.reduceMotion
+    val pop = remember { Animatable(if (earned && !reduce) 0.8f else 1f) }
+    LaunchedEffect(earned) { if (earned && !reduce) pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) }
+    Box(modifier.size(size).graphicsLayer { scaleX = pop.value; scaleY = pop.value }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(size)) {
             val sw = 5.dp.toPx()
             val tl = Offset(sw / 2, sw / 2)
@@ -150,7 +167,7 @@ fun BadgeMedal(id: BadgeId, earned: Boolean, fraction: Float, modifier: Modifier
             }
         }
         Text(
-            id.glyph, style = MaterialTheme.typography.titleMedium,
+            id.glyph, style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 19.sp),
             color = if (earned) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

@@ -6,7 +6,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.unit.sp
+import com.walkbuddy.ui.theme.NumberStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,12 +67,12 @@ private fun DrawScope.drawFlame(level: FlameLevel, outer: Color, inner: Color, o
         drawPath(flamePath(cx, top, h, 0f), outline, style = Stroke(width = size.width * 0.06f))
         return
     }
+    if (level == FlameLevel.Blaze || level == FlameLevel.Inferno) {
+        val gr = size.width * (if (level == FlameLevel.Inferno) 0.95f else 0.8f)
+        drawCircle(Brush.radialGradient(listOf(outer.copy(alpha = 0.32f), Color.Transparent), center = Offset(cx, top + h * 0.62f), radius = gr), gr, Offset(cx, top + h * 0.62f))
+    }
     drawPath(flamePath(cx, top, h, lean), Brush.verticalGradient(listOf(inner, outer), startY = top, endY = top + h))
     drawPath(flamePath(cx, top + h * 0.38f, h * 0.62f, lean * 0.5f), inner.copy(alpha = 0.95f))
-    if (level == FlameLevel.Blaze || level == FlameLevel.Inferno) {
-        drawPath(flamePath(cx - size.width * 0.3f, top + h * 0.3f, h * 0.5f, -lean), outer.copy(alpha = 0.55f))
-        if (level == FlameLevel.Inferno) drawPath(flamePath(cx + size.width * 0.3f, top + h * 0.3f, h * 0.5f, lean), outer.copy(alpha = 0.55f))
-    }
 }
 
 @Composable
@@ -84,16 +87,16 @@ fun FlameIcon(level: FlameLevel, modifier: Modifier = Modifier, size: Dp = 56.dp
     Canvas(modifier.size(size)) { drawFlame(level, wb.flameOuter, wb.flameInner, outline, flicker) }
 }
 
-/** The streak, beautifully: a flame that grows with the streak, plus the rest tokens as small glowing pips. */
+/** The streak: a flame that grows with it, the count in the display face, and rest tokens as small labelled pips. */
 @Composable
 fun StreakCard(info: FlameInfo, modifier: Modifier = Modifier) {
     val wb = WbTheme.colors
     Surface(
         modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "${info.title}. ${info.subtitle}" },
-        shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = CardShape, color = cardColor(), border = cardBorder(),
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            FlameIcon(info.level, size = 64.dp)
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            FlameIcon(info.level, size = 60.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(info.title, style = MaterialTheme.typography.titleLarge)
                 Text(info.subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -103,13 +106,28 @@ fun StreakCard(info: FlameInfo, modifier: Modifier = Modifier) {
                     repeat(2) { i ->
                         val lit = i < info.tokens
                         Surface(
-                            shape = CircleShape, color = if (lit) wb.ringStart else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            shape = CircleShape, color = if (lit) wb.ringStart else Color.Transparent,
+                            border = if (lit) null else BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
                             modifier = Modifier.size(14.dp),
                         ) {}
                     }
                 }
                 Text("rest", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+/** The flame and the day count in a small pill, for headers. */
+@Composable
+fun StreakChip(info: FlameInfo, modifier: Modifier = Modifier) {
+    Surface(
+        modifier.semantics(mergeDescendants = true) { contentDescription = info.title },
+        shape = CircleShape, color = cardColor(), border = cardBorder(),
+    ) {
+        Row(Modifier.padding(start = 6.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            FlameIcon(info.level, size = 32.dp)
+            Text("${info.days}", style = NumberStyle.copy(fontSize = 20.sp))
         }
     }
 }

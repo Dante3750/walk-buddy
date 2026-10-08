@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.domain.AdaptiveGoal
 import com.walkbuddy.domain.Copy
@@ -47,6 +48,8 @@ import com.walkbuddy.ui.components.HourlyChart
 import com.walkbuddy.ui.components.MonthHeatmap
 import com.walkbuddy.ui.components.MoodDialog
 import com.walkbuddy.ui.components.SectionCard
+import com.walkbuddy.ui.components.ScreenTitle
+import com.walkbuddy.ui.components.WbProgress
 import com.walkbuddy.ui.components.StatLine
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -94,7 +97,7 @@ fun TrendsContent(
     onLogMood: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Trends", style = MaterialTheme.typography.headlineSmall)
+        ScreenTitle("Trends", subtitle = "Your week, your best hour, your month")
         if (t == null) {
             EmptyState("Loading", "Putting your trends together.")
             return@Column
@@ -126,7 +129,7 @@ fun TrendsContent(
         }
 
         SectionCard("Our week") {
-            Text(t.ourWeek.headlineValue, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.secondary)
+            Text(t.ourWeek.headlineValue, style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 44.sp, lineHeight = 48.sp), color = MaterialTheme.colorScheme.secondary)
             Text(t.ourWeek.headlineLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             t.ourWeek.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
             OutlinedButton(
@@ -158,10 +161,9 @@ fun TrendsContent(
         SectionCard("How walks feel") {
             Text(t.moodInsight.text, style = MaterialTheme.typography.bodyLarge)
             if (!t.moodInsight.enoughData) {
-                LinearProgressIndicator(
-                    progress = { (t.moodInsight.pairedDays / MoodInsights.MIN_DAYS.toFloat()).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "${t.moodInsight.pairedDays} of ${MoodInsights.MIN_DAYS} days with a check-in" },
-                    color = MaterialTheme.colorScheme.secondary,
+                WbProgress(
+                    (t.moodInsight.pairedDays / MoodInsights.MIN_DAYS.toFloat()).coerceIn(0f, 1f),
+                    Modifier.semantics { contentDescription = "${t.moodInsight.pairedDays} of ${MoodInsights.MIN_DAYS} days with a check-in" },
                 )
             }
             t.recentMoods.forEach { m ->
@@ -179,11 +181,7 @@ fun TrendsContent(
         }
 
         SectionCard("Active minutes") {
-            LinearProgressIndicator(
-                progress = { r.guidance.fraction.toFloat() },
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "${r.activeEquivMin} of 150 active minutes" },
-                color = MaterialTheme.colorScheme.secondary,
-            )
+            WbProgress(r.guidance.fraction.toFloat(), Modifier.semantics { contentDescription = "${r.activeEquivMin} of 150 active minutes" })
             Text("${r.activeEquivMin} of 150 minutes", style = MaterialTheme.typography.titleMedium)
             Text(if (r.guidance.met) "You have reached the commonly cited weekly guidance." else "${r.guidance.remainingMin} minutes to the commonly cited weekly guidance.")
             Disclaimer(Copy.ACTIVE_GUIDANCE + " Brisk minutes count once, vigorous minutes count double.")

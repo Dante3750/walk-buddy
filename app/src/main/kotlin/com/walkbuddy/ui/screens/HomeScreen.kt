@@ -2,7 +2,21 @@
 
 package com.walkbuddy.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import com.walkbuddy.ui.components.CardShape
+import com.walkbuddy.ui.components.StatItem
+import com.walkbuddy.ui.components.StatStrip
+import com.walkbuddy.ui.components.StreakChip
+import com.walkbuddy.ui.components.WbProgress
+import com.walkbuddy.ui.components.staggerIn
+import com.walkbuddy.ui.theme.NumberStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -221,14 +235,25 @@ fun HomeContent(
     onBurstDone: () -> Unit,
     a: HomeActions,
 ) {
+    val header: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(greeting, style = MaterialTheme.typography.headlineMedium, maxLines = 2)
+                Text(
+                    h.daysTogether ?: "One step, then another.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            StreakChip(h.flame)
+        }
+    }
+
     val hero: @Composable () -> Unit = {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 StepHero(steps = h.verifiedSteps, goal = h.goal, buddies = h.buddies, walking = h.walking)
                 ConfettiBurst(active = burst, onDone = onBurstDone, modifier = Modifier.matchParentSize())
             }
-            VerifiedChip(h.verifiedSteps, h.rawSteps)
-            BuddyLeadRow(h.buddies, h.verifiedSteps)
             if (Hero.goalReached(h.verifiedSteps, h.goal)) {
                 Text(
                     "You reached today's goal. Lovely.",
@@ -236,12 +261,32 @@ fun HomeContent(
                     style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center,
                 )
             }
-            val dist = Units.distanceAmount(h.distanceM, h.unit)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatPill("Distance", dist.value, dist.unit, Modifier.weight(1f))
-                StatPill("Active", (if (h.activeIsEstimate) "~" else "") + h.activeMin, "min", Modifier.weight(1f))
-                h.calories?.let { StatPill("Energy, estimate", "${(it.lowKcal + it.highKcal) / 2}", "kcal", Modifier.weight(1f)) }
+            BuddyLeadRow(h.buddies, h.verifiedSteps)
+            VerifiedChip(h.verifiedSteps, h.rawSteps)
+        }
+    }
+
+    val stats: @Composable () -> Unit = {
+        val dist = Units.distanceAmount(h.distanceM, h.unit)
+        StatStrip(
+            buildList {
+                add(StatItem("Distance", dist.value, dist.unit))
+                add(StatItem("Active", (if (h.activeIsEstimate) "~" else "") + h.activeMin, "min"))
+                h.calories?.let { add(StatItem("Energy, estimate", "${(it.lowKcal + it.highKcal) / 2}", "kcal")) }
+            },
+        )
+    }
+
+    val walk: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                Text("Start a walk together", style = MaterialTheme.typography.titleMedium)
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton(onClick = a.onJoin, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Join with a code", textAlign = TextAlign.Center) }
+                FilledTonalButton(onClick = a.onSolo, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Walk solo") }
+            }
+            if (!locationGranted) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
         }
     }
 
@@ -259,53 +304,29 @@ fun HomeContent(
                     label = { Text(if (h.restDay) "Rest day is on" else "Rest day") },
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
-                OutlinedButton(
-                    onClick = a.onShare,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("Share today") }
+                AssistChip(onClick = a.onShare, label = { Text("Share today") }, modifier = Modifier.heightIn(min = 48.dp))
             }
             if (h.gentle) Disclaimer("${GentleDay.COPY} Today's goal: ${Hero.thousands(h.goal)} steps.")
             if (h.restDay) Text("Today is a rest day. Moving is optional.", color = MaterialTheme.colorScheme.primary)
 
-            StreakCard(h.flame)
+            StreakCard(h.flame, Modifier.staggerIn(0))
 
-            if (h.countdown != null) {
-                SectionCard(null) {
-                    h.daysTogether?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-                    Text(h.countdown, style = MaterialTheme.typography.bodyLarge)
+            if (h.countdown != null) HeartCard(h.daysTogether, h.countdown, Modifier.staggerIn(1))
+
+            SectionCard("Active minutes this week", Modifier.staggerIn(2)) {
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${h.guidance.equivMin}", style = NumberStyle.copy(fontSize = 32.sp, lineHeight = 36.sp))
+                    Text("of ${WeeklyGuidance.TARGET_MIN} minutes", Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }
-
-            SectionCard("Active minutes this week") {
-                LinearProgressIndicator(
-                    progress = { h.guidance.fraction.toFloat() },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 8.dp).semantics { contentDescription = "${h.guidance.equivMin} of 150 active minutes this week" },
-                    color = MaterialTheme.colorScheme.secondary,
-                )
-                Text("${h.guidance.equivMin} of ${WeeklyGuidance.TARGET_MIN} minutes", style = MaterialTheme.typography.titleMedium)
+                WbProgress(h.guidance.fraction.toFloat(), Modifier.semantics { contentDescription = "${h.guidance.equivMin} of 150 active minutes this week" })
                 Disclaimer(Copy.ACTIVE_GUIDANCE)
             }
 
-            SectionCard("Walk") {
-                Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Start a walk together") }
-                OutlinedButton(onClick = a.onJoin, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Join with a code or link") }
-                OutlinedButton(onClick = a.onSolo, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walk solo") }
-                if (!locationGranted) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Disclaimer(Copy.SHARE_LOCATION)
+                Disclaimer(Copy.WELLNESS)
+                Disclaimer("Verified steps leave out time spent in vehicles or on a bike, and anything faster than walking pace.")
             }
-
-            Disclaimer(Copy.WELLNESS)
-            Disclaimer("Verified steps leave out time spent in vehicles or on a bike, and anything faster than walking pace.")
-        }
-    }
-
-    val header: @Composable () -> Unit = {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(greeting, style = MaterialTheme.typography.headlineSmall)
-            Text(
-                h.daysTogether ?: "One step, then another.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 
@@ -314,22 +335,41 @@ fun HomeContent(
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 header()
                 hero()
+                stats()
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { details() }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                walk()
+                details()
+            }
         }
     } else {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             header()
             hero()
+            stats()
+            walk()
             details()
         }
     }
+}
 
+/** "Day 412 together" and the next date to look forward to, on a berry gradient. White text keeps strong contrast in both themes. */
+@Composable
+private fun HeartCard(daysTogether: String?, countdown: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier.fillMaxWidth().clip(CardShape).background(Brush.linearGradient(listOf(Color(0xFFC2305F), Color(0xFF5E1D55)))).padding(20.dp)
+            .semantics(mergeDescendants = true) { contentDescription = listOfNotNull(daysTogether, countdown).joinToString(". ") },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            daysTogether?.let { Text(it, style = MaterialTheme.typography.headlineSmall, color = Color.White) }
+            Text(countdown, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.92f))
+        }
+    }
 }
 
 @Composable
 private fun DemoBanner(a: HomeActions) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
+    Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Demo mode", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
             Text(

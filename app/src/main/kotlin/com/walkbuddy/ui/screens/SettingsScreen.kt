@@ -54,6 +54,7 @@ import com.walkbuddy.ui.AppViewModel
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
 import com.walkbuddy.ui.components.SectionCard
+import com.walkbuddy.ui.components.ScreenTitle
 import com.walkbuddy.ui.components.ToggleRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -103,7 +104,7 @@ fun SettingsContent(s: Settings?, a: SettingsActions) {
         return
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall)
+        ScreenTitle("Settings")
         AppearanceSection(a, s)
         ProfileSection(a, s)
         GoalSection(a, s)

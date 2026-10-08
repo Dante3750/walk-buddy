@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -57,10 +58,16 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+/** Rough width of the number in em for the bundled display face: tabular digits 0.585, comma and point about 0.2, minus the tight tracking. */
+private fun numberEm(text: String): Float {
+    val em = text.sumOf { if (it == ',' || it == '.') 0.2 else 0.585 } - 0.03 * text.length
+    return em.toFloat().coerceAtLeast(0.6f)
+}
+
 /**
- * The hero of the app: a giant centred step count that counts up smoothly inside a thick gradient ring.
- * The ring has a goal marker at the top, glows gently while you walk, and carries your buddies as small
- * avatar dots at their own progress.
+ * The hero of the app: a giant, perfectly centred step count that counts up inside a gradient ring. A small label sits
+ * above the number and "to go" below it, both the same height, so the number itself is the visual centre. Buddies sit on
+ * the ring as avatar dots at their own progress, and a soft glow warms the space behind it.
  */
 @Composable
 fun StepHero(
@@ -70,7 +77,7 @@ fun StepHero(
     walking: Boolean,
     modifier: Modifier = Modifier,
     caption: String = "steps today",
-    maxSize: Dp = 360.dp,
+    maxSize: Dp = 380.dp,
 ) {
     val motion = WbTheme.motion
     val wb = WbTheme.colors
@@ -93,20 +100,21 @@ fun StepHero(
         ).value
     } else if (Hero.goalReached(target, goal)) 0.45f else 0.0f
 
-    val background = MaterialTheme.colorScheme.background
-    val markerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
     val shown = animSteps.value.roundToInt()
     val numberText = Hero.thousands(shown)
     val fitText = Hero.thousands(target)
     val pct = (fraction * 100).roundToInt()
-    val description = "$target steps today. Goal $goal, $pct percent." + if (Hero.goalReached(target, goal)) " Goal reached." else ""
+    val reached = Hero.goalReached(target, goal)
+    val description = "$target steps today. Goal $goal, $pct percent." + if (reached) " Goal reached." else ""
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val wash = if (isLightSurface()) 0.13f else 0.2f
 
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val diameter = if (maxWidth < maxSize) maxWidth else maxSize
-        val stroke = diameter * 0.085f
-        val inner = (diameter - stroke * 2 - 20.dp).value.coerceAtLeast(80f)
+        val stroke = diameter * 0.068f
+        val inner = (diameter - stroke * 2 - 36.dp).value.coerceAtLeast(80f)
         val density = LocalDensity.current
-        val numberSp = with(density) { Hero.numberSizeSp(fitText, inner).dp.toSp() }
+        val numberSp = with(density) { (inner / numberEm(fitText)).coerceIn(56f, 132f).dp.toSp() }
         val radiusPx = with(density) { (diameter - stroke).toPx() / 2f }
 
         Box(Modifier.size(diameter).semantics(mergeDescendants = true) { contentDescription = description }, contentAlignment = Alignment.Center) {
@@ -115,9 +123,15 @@ fun StepHero(
                 val topLeft = Offset(sw / 2, sw / 2)
                 val arcSize = Size(size.width - sw, size.height - sw)
                 val c = Offset(size.width / 2, size.height / 2)
+                // Warm wash behind the ring: depth without a hard shadow.
+                drawCircle(
+                    Brush.radialGradient(listOf(wb.glow.copy(alpha = wash), Color.Transparent), center = c, radius = size.width * 0.62f),
+                    radius = size.width * 0.62f, center = c,
+                )
                 drawArc(wb.ringTrack, 0f, 360f, false, topLeft, arcSize, style = Stroke(sw))
                 val sweep = 360f * animFraction.value
                 if (sweep > 0.5f) {
+                    val f = (sweep / 360f).coerceAtLeast(0.06f)
                     val head = Offset(
                         c.x + radiusPx * cos(Math.toRadians((sweep - 90f).toDouble())).toFloat(),
                         c.y + radiusPx * sin(Math.toRadians((sweep - 90f).toDouble())).toFloat(),
@@ -130,17 +144,18 @@ fun StepHero(
                         )
                     }
                     rotate(-90f, c) {
+                        // The gradient is stretched over the filled part only, and wraps back to the start colour, so there is no seam at 12 o'clock.
                         drawArc(
-                            brush = Brush.sweepGradient(0f to wb.ringStart, 0.55f to wb.ringMid, 1f to wb.ringEnd, center = c),
+                            brush = Brush.sweepGradient(
+                                0f to wb.ringStart, f * 0.55f to wb.ringMid, f to wb.ringEnd, 1f to wb.ringStart, center = c,
+                            ),
                             startAngle = 0f, sweepAngle = sweep, useCenter = false, topLeft = topLeft, size = arcSize,
                             style = Stroke(sw, cap = StrokeCap.Round),
                         )
                     }
+                    // A bright pip on the leading edge.
+                    drawCircle(Color.White.copy(alpha = 0.85f), radius = sw * 0.16f, center = head)
                 }
-                // Goal marker where the ring closes (12 o'clock).
-                val top = Offset(c.x, sw / 2)
-                drawCircle(markerColor, radius = sw * 0.2f, center = top)
-                drawCircle(background, radius = sw * 0.08f, center = top)
             }
 
             buddies.forEach { b ->
@@ -152,14 +167,16 @@ fun StepHero(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    numberText, style = BigNumberStyle, fontSize = numberSp, lineHeight = numberSp, maxLines = 1, softWrap = false,
-                    color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center,
+                    caption, Modifier.heightIn(min = 26.dp), style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(caption, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    Hero.toGoText(target, goal), style = MaterialTheme.typography.labelLarge,
-                    color = if (Hero.goalReached(target, goal)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
+                    numberText, style = BigNumberStyle, fontSize = numberSp, lineHeight = numberSp, maxLines = 1, softWrap = false,
+                    color = onSurface, textAlign = TextAlign.Center,
+                )
+                Text(
+                    Hero.toGoText(target, goal), Modifier.heightIn(min = 26.dp), style = MaterialTheme.typography.titleMedium,
+                    color = if (reached) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -171,53 +188,63 @@ fun BuddyDot(initial: String, modifier: Modifier = Modifier, size: Dp = 34.dp) {
     val wb = WbTheme.colors
     Surface(
         modifier = modifier.size(size), shape = CircleShape, color = wb.buddy,
-        border = BorderStroke(2.5.dp, MaterialTheme.colorScheme.background), shadowElevation = 2.dp,
+        border = BorderStroke(2.5.dp, MaterialTheme.colorScheme.background), shadowElevation = 3.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(initial, color = wb.onBuddy, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(initial, color = wb.onBuddy, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.42f).sp, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
 
-/** "Verified 5,247 / Raw 5,387": the honest-steps chip. */
+/** "Verified 5,247, raw sensor 5,390": the honest-steps line, with a small check. */
 @Composable
 fun VerifiedChip(verified: Int, raw: Int, modifier: Modifier = Modifier) {
     val diff = raw - verified
-    val text = if (diff > 20) "Verified ${Hero.thousands(verified)}  /  raw ${Hero.thousands(raw)}" else "All ${Hero.thousands(verified)} steps verified"
-    Surface(
-        modifier = modifier.semantics { contentDescription = "Verified steps $verified, raw sensor steps $raw" },
-        shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    val text = if (diff > 20) "Verified ${Hero.thousands(verified)}, raw sensor ${Hero.thousands(raw)}" else "All ${Hero.thousands(verified)} steps verified"
+    val tint = MaterialTheme.colorScheme.secondary
+    Row(
+        modifier.semantics(mergeDescendants = true) { contentDescription = "Verified steps $verified, raw sensor steps $raw" },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Canvas(Modifier.size(16.dp)) {
+            drawCircle(tint.copy(alpha = 0.16f))
+            val p = androidx.compose.ui.graphics.Path().apply {
+                moveTo(size.width * 0.28f, size.height * 0.52f)
+                lineTo(size.width * 0.44f, size.height * 0.68f)
+                lineTo(size.width * 0.74f, size.height * 0.34f)
+            }
+            drawPath(p, tint, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-/** Buddy ahead/behind lines under the ring, e.g. "Sam  +1,240". */
+/** Buddy ahead/behind pills under the ring: an avatar and one plain sentence, e.g. "Meera is 873 steps ahead". */
 @Composable
 fun BuddyLeadRow(buddies: List<RingBuddy>, mySteps: Int, modifier: Modifier = Modifier) {
     if (buddies.isEmpty()) return
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         buddies.forEach { b ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BuddyDot(b.initial, size = 26.dp)
-                Text(Hero.leadText(b.name, mySteps, b.steps), style = MaterialTheme.typography.bodyMedium)
-                Text(Hero.delta(mySteps, b.steps), style = NumberStyle.copy(fontSize = 15.sp), color = WbTheme.colors.buddy)
+            Surface(shape = CircleShape, color = cardColor(), border = cardBorder()) {
+                Row(Modifier.padding(start = 8.dp, end = 18.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BuddyDot(b.initial, size = 30.dp)
+                    Text(Hero.leadText(b.name, mySteps, b.steps), style = MaterialTheme.typography.titleSmall)
+                }
             }
         }
     }
 }
 
-/** A big stat in a soft pill: distance, active minutes, calories (only if the user turned them on). */
+/** A single stat in a soft pill (kept for previews and small spots; screens use StatStrip). */
 @Composable
 fun StatPill(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.semantics(mergeDescendants = true) { contentDescription = "$label $value $unit" },
-        shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.medium, color = cardColor(), border = cardBorder(),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = NumberStyle, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
-            Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f), maxLines = 1)
+            Text("$value $unit", style = NumberStyle, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }

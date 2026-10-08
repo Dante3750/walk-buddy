@@ -1,9 +1,8 @@
 package com.walkbuddy.shots
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import app.cash.paparazzi.DeviceConfig
@@ -27,9 +26,9 @@ fun newPaparazzi() = Paparazzi(
 )
 
 /** One screenshot of [content] inside the real app theme. The PNG is named after the test method. [heightPx] lets long scrolling screens render in full. */
-fun Paparazzi.shot(name: String, look: Look, heightPx: Int = 2340, content: @Composable () -> Unit) {
+fun Paparazzi.shot(name: String, look: Look, heightPx: Int = 2340, base: DeviceConfig = DeviceConfig.PIXEL_5, content: @Composable () -> Unit) {
     unsafeUpdateConfig(
-        DeviceConfig.PIXEL_5.copy(
+        base.copy(
             nightMode = if (look.dark) NightMode.NIGHT else NightMode.NOTNIGHT,
             fontScale = look.fontScale,
             screenHeight = heightPx,
@@ -37,7 +36,8 @@ fun Paparazzi.shot(name: String, look: Look, heightPx: Int = 2340, content: @Com
     )
     snapshot {
         WalkBuddyTheme(darkTheme = look.dark, reduceMotion = true) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() }
+            // A Surface provides the right content colour (black text on a black page was a test-harness bug in round 1).
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() }
         }
     }
 }

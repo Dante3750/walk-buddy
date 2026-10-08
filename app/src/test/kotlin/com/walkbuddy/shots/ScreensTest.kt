@@ -23,6 +23,13 @@ import com.walkbuddy.ui.screens.SettingsContent
 import com.walkbuddy.ui.screens.SummaryContent
 import com.walkbuddy.ui.screens.TrendsContent
 import com.walkbuddy.ui.screens.WalkActions
+import app.cash.paparazzi.DeviceConfig
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import com.walkbuddy.ui.components.NavItem
+import com.walkbuddy.ui.components.TabGlyph
+import com.walkbuddy.ui.components.WbBottomBar
+import com.walkbuddy.ui.components.WbRail
 import org.junit.Rule
 import org.junit.Test
 
@@ -32,6 +39,11 @@ import org.junit.Test
  */
 class ScreensTest {
     @get:Rule val paparazzi = newPaparazzi()
+
+    private val navItems = listOf(
+        NavItem("Today", TabGlyph.Today), NavItem("Trends", TabGlyph.Trends), NavItem("Fuel", TabGlyph.Fuel),
+        NavItem("Us", TabGlyph.Us), NavItem("Settings", TabGlyph.Settings),
+    )
 
     private fun home(look: Look, h: com.walkbuddy.ui.HomeUi = Fixtures.home(), name: String = "home", height: Int = 3300) =
         paparazzi.shot(name, look, height) {
@@ -43,6 +55,36 @@ class ScreensTest {
     @Test fun home_large() = home(Look.Large, height = 4200)
     @Test fun home_goal_light() = home(Look.Light, Fixtures.home(steps = 7420, buddySteps = 5800), "home_goal")
     @Test fun home_demo_dark() = home(Look.Dark, Fixtures.home(demo = true, walking = true), "home_demo")
+
+    /** What you see when you open the app: Home above the fold with the real bottom navigation. */
+    private fun fold(look: Look, h: com.walkbuddy.ui.HomeUi = Fixtures.home(), name: String = "fold") = paparazzi.shot(name, look, 2340) {
+        androidx.compose.material3.Scaffold(bottomBar = { WbBottomBar(navItems, 0) {} }) { pad ->
+            androidx.compose.foundation.layout.Box(Modifier.padding(pad)) {
+                HomeContent(h, "Good evening, Aarav", wide = false, locationGranted = true, burst = false, onBurstDone = {}, a = HomeActions())
+            }
+        }
+    }
+    @Test fun fold_light() = fold(Look.Light)
+    @Test fun fold_dark() = fold(Look.Dark)
+    @Test fun fold_large() = fold(Look.Large)
+    @Test fun fold_long_text() = paparazzi.shot("fold_long", Look.Large, 2340) {
+        androidx.compose.material3.Scaffold(bottomBar = { WbBottomBar(navItems, 0) {} }) { pad ->
+            androidx.compose.foundation.layout.Box(Modifier.padding(pad)) {
+                HomeContent(
+                    Fixtures.home(buddyName = "Lakshmi Narayanan", buddySteps = 4100), "Good evening, Priyadarshini Venkataraman",
+                    wide = false, locationGranted = false, burst = false, onBurstDone = {}, a = HomeActions(),
+                )
+            }
+        }
+    }
+    @Test fun tablet_light() = paparazzi.shot("tablet", Look.Light, 1600, DeviceConfig.NEXUS_10) {
+        Row(Modifier.fillMaxSize()) {
+            WbRail(navItems, 0) {}
+            Box(Modifier.weight(1f)) {
+                HomeContent(Fixtures.home(), "Good evening, Aarav", wide = true, locationGranted = true, burst = false, onBurstDone = {}, a = HomeActions())
+            }
+        }
+    }
 
     @Test fun live_light() = paparazzi.shot("live", Look.Light, 2800) {
         LiveContent(Fixtures.live, 5_247, 7_000, UnitSystem.Metric, false, WalkActions())

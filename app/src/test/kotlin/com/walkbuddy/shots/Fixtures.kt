@@ -59,13 +59,13 @@ object Fixtures {
 
     private val streak = StreakResult(9, 14, 2)
 
-    fun home(steps: Int = 5247, goal: Int = 7000, walking: Boolean = false, demo: Boolean = false, buddySteps: Int = 6120, gentle: Boolean = false, calories: Boolean = false) = HomeUi(
+    fun home(steps: Int = 5247, goal: Int = 7000, walking: Boolean = false, demo: Boolean = false, buddySteps: Int = 6120, gentle: Boolean = false, calories: Boolean = false, buddyName: String = "Meera") = HomeUi(
         rawSteps = steps + 143, verifiedSteps = steps, goal = goal, baseGoal = goal, gentle = gentle, restDay = false,
         distanceM = steps * 0.72, activeMin = 41, activeIsEstimate = false,
         calories = if (calories) CalorieRange(180, 300) else null,
         guidance = WeeklyGuidance.progress(96, 12), streak = streak,
         flame = StreakFlame.info(streak, steps >= goal, false, 17),
-        buddies = listOf(RingBuddy("b", "Meera", buddySteps, 8000)), unit = UnitSystem.Metric, name = "Aarav", demo = demo,
+        buddies = listOf(RingBuddy("b", buddyName, buddySteps, 8000)), unit = UnitSystem.Metric, name = "Aarav", demo = demo,
         countdown = "12 days until our anniversary", daysTogether = "Day 412 together", walking = walking,
     )
 

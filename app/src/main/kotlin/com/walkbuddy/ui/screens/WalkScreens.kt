@@ -61,6 +61,13 @@ import com.walkbuddy.ui.AppViewModel
 import com.walkbuddy.ui.components.Disclaimer
 import com.walkbuddy.ui.components.EmptyState
 import com.walkbuddy.ui.components.QrView
+import com.walkbuddy.ui.components.ScreenTitle
+import com.walkbuddy.ui.components.StatItem
+import com.walkbuddy.ui.components.StatStrip
+import com.walkbuddy.ui.components.BuddyDot
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import com.walkbuddy.ui.components.SectionCard
 import com.walkbuddy.ui.components.StatLine
 import com.walkbuddy.ui.components.ToggleRow
@@ -144,17 +151,21 @@ fun WalkFlow(vm: AppViewModel, ui: SessionUi) {
 @Composable
 fun LobbyContent(ui: SessionUi, a: WalkActions) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(if (ui.solo) "Solo walk" else "Your walk", style = MaterialTheme.typography.titleLarge)
+        ScreenTitle(if (ui.solo) "Solo walk" else "Your walk", subtitle = if (ui.solo) "Just you and the evening." else "Share the code, then start when you are both here.")
 
         if (!ui.solo && ui.code != null) {
             SectionCard("Invite a buddy") {
                 Text(
-                    ui.code, fontSize = 40.sp, style = MaterialTheme.typography.headlineMedium, letterSpacing = 6.sp,
+                    ui.code, fontSize = 44.sp, style = com.walkbuddy.ui.theme.BigNumberStyle, letterSpacing = 6.sp,
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Session code ${ui.code!!.toList().joinToString(" ")}" },
                     textAlign = TextAlign.Center,
                 )
                 ui.joinLink?.let { link ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { QrView(link) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        Surface(shape = RoundedCornerShape(20.dp), color = Color.White, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                            QrView(link, Modifier.padding(8.dp))
+                        }
+                    }
                     Disclaimer("Scan with your buddy's phone camera, or send them the link or the code.")
                     Button(
                         onClick = { a.onShareInvite(ui.code, link) },
@@ -176,7 +187,15 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
                 if (ui.peers.isEmpty()) {
                     Text("Nobody yet. You can start walking now and they can still join.", style = MaterialTheme.typography.bodyMedium)
                 } else {
-                    ui.peers.forEach { Text("${it.name}  ${if (it.connected) "connected" else "connecting"}", style = MaterialTheme.typography.titleMedium) }
+                    ui.peers.forEach {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            BuddyDot(it.name.trim().take(1).uppercase().ifEmpty { "?" }, size = 36.dp)
+                            Column {
+                                Text(it.name, style = MaterialTheme.typography.titleMedium)
+                                Text(if (it.connected) "Connected" else "Connecting...", style = MaterialTheme.typography.bodySmall, color = if (it.connected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                 }
                 if (ui.coupleMode) Text("Just the two of you. Couple features are on.", color = MaterialTheme.colorScheme.primary)
             }
@@ -232,18 +251,20 @@ fun LiveContent(ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walk
         val heroGoal = todayGoal ?: 6000
         val hero: @Composable () -> Unit = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                StepHero(steps = heroSteps, goal = heroGoal, buddies = ui.buddyDaily, walking = true, caption = "steps today", maxSize = if (wide) 320.dp else 340.dp)
-                BuddyLeadRow(ui.buddyDaily, heroSteps)
+                StepHero(steps = heroSteps, goal = heroGoal, buddies = ui.buddyDaily, walking = true, caption = "steps today", maxSize = if (wide) 340.dp else 380.dp)
                 Text(
                     "+${Hero.thousands(w.myVerifiedSteps.toInt())} steps this walk",
                     style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val dist = Units.distanceAmount(w.myDistanceM, unit)
-                    StatPill("Time", Format.duration(w.elapsedMs), "walking", Modifier.weight(1f))
-                    StatPill("Distance", dist.value, dist.unit, Modifier.weight(1f))
-                    StatPill("Pace", Units.pace(w.mySpeedMps, unit).substringBefore(" "), if (unit == com.walkbuddy.domain.UnitSystem.Metric) "min/km" else "min/mi", Modifier.weight(1f))
-                }
+                BuddyLeadRow(ui.buddyDaily, heroSteps)
+                val dist = Units.distanceAmount(w.myDistanceM, unit)
+                StatStrip(
+                    listOf(
+                        StatItem("Time", Format.duration(w.elapsedMs)),
+                        StatItem("Distance", dist.value, dist.unit),
+                        StatItem("Pace", Units.pace(w.mySpeedMps, unit).substringBefore(" "), if (unit == com.walkbuddy.domain.UnitSystem.Metric) "/km" else "/mi"),
+                    ),
+                )
                 if (w.myRawSteps != w.myVerifiedSteps) Disclaimer("Raw steps this walk: ${w.myRawSteps}. Verified steps leave out vehicles and running speed.")
             }
         }
@@ -259,11 +280,13 @@ fun LiveContent(ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walk
                             },
                             Modifier.fillMaxWidth(), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium,
                         )
-                        Text(
-                            "Together ${w.together.scorePct}% of this walk",
-                            Modifier.fillMaxWidth().semantics { contentDescription = "Together score ${w.together.scorePct} percent" },
-                            textAlign = TextAlign.Center, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.secondary,
-                        )
+                        Row(
+                            Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "Together score ${w.together.scorePct} percent" },
+                            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.Bottom,
+                        ) {
+                            Text("${w.together.scorePct}%", style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 52.sp, lineHeight = 56.sp), color = MaterialTheme.colorScheme.secondary)
+                            Text("  of this walk together", Modifier.padding(bottom = 8.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Disclaimer("Share of the walk spent within the group radius. Longest stretch together: ${Format.duration(w.together.longestStreakMs)}.")
                     }
                     Text("Say something sweet", style = MaterialTheme.typography.titleSmall)
@@ -347,7 +370,7 @@ fun SummaryContent(ui: SessionUi, a: WalkActions) {
         if (s == null || card == null) {
             EmptyState("Nothing to show", "This walk had no data.")
         } else {
-            Text(card.title, style = MaterialTheme.typography.headlineSmall)
+            ScreenTitle(card.title, subtitle = "Nicely done.")
             SectionCard("Highlights") {
                 card.lines.forEach { Text(it, style = MaterialTheme.typography.titleMedium) }
                 if (s.steps0()) Disclaimer("Raw steps were ${s.rawSteps}; verified steps leave out time in vehicles or at running speed.")

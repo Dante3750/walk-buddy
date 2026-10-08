@@ -42,6 +42,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.walkbuddy.R
+import com.walkbuddy.ui.components.NavItem
+import com.walkbuddy.ui.components.TabGlyph
+import com.walkbuddy.ui.components.WbBottomBar
+import com.walkbuddy.ui.components.WbRail
 import com.walkbuddy.notify.PeriodicSampler
 import com.walkbuddy.session.Phase
 import com.walkbuddy.ui.screens.BadgesScreen
@@ -64,14 +68,14 @@ import kotlinx.serialization.Serializable
 @Serializable data object BadgesRoute
 @Serializable data object RecapRoute
 
-private class Tab(val route: Any, val label: Int, val icon: ImageVector)
+private class Tab(val route: Any, val label: Int, val glyph: TabGlyph)
 
 private val tabs = listOf(
-    Tab(HomeRoute, R.string.tab_today, Icons.Default.Home),
-    Tab(TrendsRoute, R.string.tab_trends, Icons.Default.DateRange),
-    Tab(FuelRoute, R.string.tab_fuel, Icons.Default.ShoppingCart),
-    Tab(UsRoute, R.string.tab_us, Icons.Default.Favorite),
-    Tab(SettingsRoute, R.string.tab_settings, Icons.Default.Settings),
+    Tab(HomeRoute, R.string.tab_today, TabGlyph.Today),
+    Tab(TrendsRoute, R.string.tab_trends, TabGlyph.Trends),
+    Tab(FuelRoute, R.string.tab_fuel, TabGlyph.Fuel),
+    Tab(UsRoute, R.string.tab_us, TabGlyph.Us),
+    Tab(SettingsRoute, R.string.tab_settings, TabGlyph.Settings),
 )
 
 @Composable
@@ -152,37 +156,18 @@ private fun MainScaffold(vm: AppViewModel) {
         }
     }
 
+    val navItems = tabs.map { NavItem(stringResource(it.label), it.glyph) }
+    val selectedIndex = tabs.indexOfFirst { t -> dest?.hierarchy?.any { it.hasRoute(t.route::class) } == true }
+
     if (width == WidthClass.Compact) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
-            bottomBar = {
-                if (showNav) NavigationBar {
-                    tabs.forEach { tab ->
-                        val label = stringResource(tab.label)
-                        NavigationBarItem(
-                            selected = dest?.hierarchy?.any { it.hasRoute(tab.route::class) } == true,
-                            onClick = { go(tab.route) },
-                            icon = { Icon(tab.icon, contentDescription = null) },
-                            label = { Text(label) },
-                        )
-                    }
-                }
-            },
+            bottomBar = { if (showNav) WbBottomBar(navItems, selectedIndex) { go(tabs[it].route) } },
         ) { pad -> content(Modifier.padding(pad)) }
     } else {
         Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { pad ->
             Row(Modifier.padding(pad).fillMaxSize(), horizontalArrangement = Arrangement.Start) {
-                if (showNav) NavigationRail {
-                    tabs.forEach { tab ->
-                        val label = stringResource(tab.label)
-                        NavigationRailItem(
-                            selected = dest?.hierarchy?.any { it.hasRoute(tab.route::class) } == true,
-                            onClick = { go(tab.route) },
-                            icon = { Icon(tab.icon, contentDescription = null) },
-                            label = { Text(label) },
-                        )
-                    }
-                }
+                if (showNav) WbRail(navItems, selectedIndex) { go(tabs[it].route) }
                 content(Modifier.weight(1f))
             }
         }
