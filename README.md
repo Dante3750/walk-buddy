@@ -8,7 +8,43 @@ It was built for a couple who walk together every evening, so a two-person **cou
 
 No accounts. No analytics. No ads. No voice or video, and the app never asks for the microphone or camera. Everything stays on the phone except live walk data, which goes **phone to phone** over an encrypted WebRTC data channel to the people you invite.
 
-> **Honest status:** the pure-Kotlin `:domain` (154 JUnit tests) and the signaling `server/` (21 tests with real WebSocket clients) are built and tested. The Android app (`:app`) has **not been compiled yet**: the sandbox it was written in had no Android SDK or Maven access. It is linted by script only until the GitHub repo exists and CI runs. Expect a few compile fixes on the first CI run. See [Status](#status).
+> **Honest status (alpha 1.1):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, haptics, WebRTC pairing, the widget and the Android 16 live update are all untested on a device. See [Status](#status).
+
+## Get the debug APK
+
+1. Open the [latest green run of the CI workflow](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess).
+2. Scroll to **Artifacts** and download `walk-buddy-debug-apk`. GitHub asks you to **sign in** before it lets you download artifacts, even on a public repo.
+3. Unzip, copy `app-debug.apk` to the phone and install it (allow "install unknown apps" for your file manager). Debug builds are unsigned for release and are for trying the app, not for the Play Store.
+4. No buddy yet? Turn on **Demo mode** (onboarding, or Settings). It needs no permissions and no second phone.
+
+## Alpha 1.1 feature tour
+
+- **The hero:** a huge centred, tabular step count that springs up inside a thick gradient ring with a goal marker and a soft glow while you walk. Under it: a verified-steps line, a raw-vs-verified chip, and pills for distance, active minutes and (only if enabled) calories. Buddies sit on the ring as avatar dots with "ahead / behind" text. Reaching the goal brings confetti, a haptic and a shareable card. The same big number stays central on the live walk screen.
+- **Streak flame** with rest tokens, **badges** (12, with unlock snackbars), an **hour-by-hour histogram** ("your best walking hour") and a **month heat-map** calendar.
+- **Mood check-in** after a walk (emoji and a one-line note, stored locally) with an insight that says plainly it shows a pattern, not a cause.
+- **Couple extras:** "Our week" card, warm preset quick-reactions over the data channel (rate-limited), anniversary countdown, walk-date reminders.
+- **Gentle-day mode** (a softer goal on a low day that never raises the real goal) and a swipeable, story-style **weekly recap**.
+- **Share card:** stats only, drawn to a Bitmap and shared through FileProvider (no map, no location).
+- **Onboarding** in 3 steps, **demo mode**, and settings for km/mi, step-length calibration, reduce-motion, haptics and quiet hours.
+- **Around the system:** Glance home-screen widget, Quick Settings tile, app shortcuts, edge-to-edge, predictive back, splash screen, tablet/foldable layouts (nav rail), English and Hindi system strings, and on Android 16 a progress-style live-update notification during a walk.
+
+## Design notes
+
+"Dusk": a warm evening palette (amber to coral to berry) for people who walk after work. Material 3 with **dynamic colour on Android 12+ (opt-in in Settings)** and a hand-tuned brand palette as the default and fallback. Dark theme is true black for OLED. The step number uses a bold, tabular-figure display style so digits do not jiggle while counting. Shapes are generously rounded; the ring is the one loud element and everything else stays quiet. All motion respects the reduce-motion setting (count-up, glow, confetti, flame, pager).
+
+## Tech choices and the reason for each new dependency
+
+| Piece | Why |
+|---|---|
+| Navigation Compose 2.8 type-safe routes | `@Serializable` route objects instead of strings (kotlinx.serialization plugin was already applied). |
+| `androidx.core:core-splashscreen` 1.0.1 (new) | One splash API for API 26 to 35. |
+| `androidx.glance:glance-appwidget` 1.1.1 (new) | Compose-style home-screen widget. Isolated in its own `:widget` module and switchable with `-Pwidget=false`, so a Glance problem cannot break the app build. The app and widget only share a tiny SharedPreferences file and a broadcast. |
+| Android 16 `Notification.ProgressStyle` | Reached by reflection and gated by `SDK_INT >= 36` (compileSdk is 35), with the normal ongoing notification as fallback. No new dependency. |
+| `collectAsStateWithLifecycle`, immutable UI state, stable lazy keys | Lifecycle-safe collection and cheaper recomposition. |
+| Plain canvas share card, no image library | One Bitmap and a FileProvider are enough. |
+| WindowSizeClass-aware layout (`Adaptive.kt`) | Nav bar on phones, rail on wide screens. |
+
+Not done: shared-element transitions (cut to keep the build safe), a baseline profile (a good next step: add the Macrobenchmark module and generate one), and the Hindi translation covers system surfaces (app name, widget, shortcuts, tile, notification) while in-app copy is English only.
 
 ## Features
 
@@ -76,7 +112,7 @@ server/    Node 18+ signaling relay (one dependency: ws), Dockerfile, node --tes
 
 ### The message protocol
 
-Peer messages are versioned JSON, `{"v":1,"t":"pos", ...}`: `hello`, `pos`, `ping`, `spot`, `bye`. The decoder is tolerant (unknown fields ignored, numbers sent as strings accepted, newer versions and unknown types accepted as `Unknown`) and strict about values (ranges, sizes, finite numbers, control characters stripped from names), so a buggy peer cannot crash or confuse your screen. The signaling protocol is documented in [`server/README.md`](server/README.md).
+Peer messages are versioned JSON, `{"v":1,"t":"pos", ...}`: `hello`, `pos`, `ping`, `spot`, `react`, `day`, `bye`. The decoder is tolerant (unknown fields ignored, numbers sent as strings accepted, newer versions and unknown types accepted as `Unknown`) and strict about values (ranges, sizes, finite numbers, control characters stripped from names), so a buggy peer cannot crash or confuse your screen. The signaling protocol is documented in [`server/README.md`](server/README.md).
 
 ## Run the signaling server
 
@@ -97,12 +133,14 @@ Or with Docker: `docker build -t walk-buddy-signaling server && docker run -p 80
 
 CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then on the GitHub runner's preinstalled Android SDK: `:domain:test`, `:app:assembleDebug`, `:app:lintDebug` (reported, not blocking) and a non-blocking Health Connect compile. The debug APK is uploaded as the `walk-buddy-debug-apk` artifact.
 
+Release history: [CHANGELOG.md](CHANGELOG.md) and [RELEASES.md](RELEASES.md).
+
 Change `applicationId` / `namespace` in `app/build.gradle.kts` before publishing.
 
 ### Tests
 
 ```bash
-./gradlew :domain:test                 # 154 tests
+./gradlew :domain:test                 # 205 tests
 scripts/domain-test-offline.sh         # same tests with only the jars inside a Gradle distribution (no Maven needed)
 cd server && npm test                  # 21 tests
 ```
@@ -124,16 +162,16 @@ cd server && npm test                  # 21 tests
 
 What is verified, and what is not:
 
-- **Verified here:** `:domain` compiles with Kotlin 2.0.21 (via Gradle's bundled compiler) and all 154 tests pass. The server's 21 tests pass on Node 22 against real WebSocket clients. The pure-Kotlin QR encoder's output was decoded successfully by OpenCV's QR detector for several payloads (a one-off manual check; the unit tests cover Reed-Solomon, format bits and structure with published vectors).
-- **Not compiled yet:** everything under `app/`. It was written without an Android SDK and linted only by the same script used for Builder's Ledger plus a manual API review. File-level `@OptIn(ExperimentalMaterial3Api::class)` hardening is applied to every Compose file that touches Material 3.
-- **Unverified dependencies:** `io.getstream:stream-webrtc-android:1.3.7` (the `org.webrtc` API used in `rtc/PeerLink.kt` is written from memory), `com.squareup.okhttp3:okhttp:4.12.0`, and the optional `androidx.health.connect:connect-client:1.1.0-alpha10`. Their resolution and the code against them are unverified until CI runs. If the Stream version does not exist, change `streamWebrtc` in `gradle/libs.versions.toml`.
+- **Verified here:** `:domain` compiles with Kotlin 2.0.21 (via Gradle's bundled compiler) and all 205 tests pass. The server's 21 tests pass on Node 22 against real WebSocket clients. The pure-Kotlin QR encoder's output was decoded successfully by OpenCV's QR detector for several payloads (a one-off manual check; the unit tests cover Reed-Solomon, format bits and structure with published vectors).
+- **Compiled by CI:** the whole `:app` and `:widget` build on the GitHub runner (Kotlin 2.0.21, AGP 8.7.3, compileSdk 35). `stream-webrtc-android:1.3.7` and OkHttp 4.12.0 resolve and compile. That proves they compile, not that pairing works.
+- **Unverified:** the optional Health Connect build (`-PhealthConnect=true`) currently fails in KSP and is non-blocking in CI; Android 16 `ProgressStyle` by reflection; Glance widget rendering on real launchers; the Quick Settings tile and shortcuts on devices.
 - **Not tested on a device.** No phone has run this. GPS behaviour, the foreground service, haptics and WebRTC connectivity are all untested.
 - **No TURN relay.** Pairing uses STUN only, as designed (everything stays phone to phone). Some mobile networks (carrier-grade NAT, common on Indian mobile data) and strict corporate Wi-Fi block direct connections, and then two phones will simply fail to connect. Same-Wi-Fi or a friendly network works best. Adding TURN is a one-line change in `PeerLink.iceServers` plus a server you trust.
 - **Calorie table:** the walking MET values were transcribed from memory of the 2011 Compendium of Physical Activities. The source is cited in `Calories.kt`; verify the numbers against the published tables.
 - **Steps outside walks:** with no GPS running, steps between periodic samples (about every 15 minutes) are only plausibility-checked (a cap on steps per minute). Vehicle and bicycle filtering needs GPS, so it applies during walks.
 - **Activity recognition** is a simple speed + cadence classifier in `:domain`, not Google's Activity Recognition API, so there is no Play Services dependency. The `ACTIVITY_RECOGNITION` permission is still requested for the hardware step counter.
 - Pings and shared spots only work while two phones are connected (lobby or walk), because there is deliberately no server that stores anything.
-- The app layer has no unit tests; all logic worth testing lives in `:domain`.
+- The app layer has no unit tests; all logic worth testing lives in `:domain`. Compose previews (light, dark, large font) exist for the hero only.
 
 ## Roadmap
 
@@ -141,7 +179,7 @@ What is verified, and what is not:
 - v1.1: walking-steadiness trend.
 - Optional TURN configuration for networks that block direct connections.
 - Compile and device-test pass once CI is green; first real GPS walk to tune the jitter and nudge thresholds.
-- Home-screen widget with today's ring.
+- Baseline profile, more previews, full Hindi translation.
 
 ## Credits and licence
 
