@@ -17,6 +17,18 @@ No accounts. No analytics. No ads. No voice or video, and the app never asks for
 3. Unzip, copy `app-debug.apk` to the phone and install it (allow "install unknown apps" for your file manager). Debug builds are unsigned for release and are for trying the app, not for the Play Store.
 4. No buddy yet? Turn on **Demo mode** (onboarding, or Settings). It needs no permissions and no second phone.
 
+## Alpha 1.2 feature tour
+
+<p>
+<img src="docs/screens/home.png" width="190" alt="Home with the giant step hero">
+<img src="docs/screens/home-dark.png" width="190" alt="Home in true-black dark theme">
+<img src="docs/screens/live-walk.png" width="190" alt="Live walk screen">
+<img src="docs/screens/weekly-recap.png" width="190" alt="Weekly recap">
+</p>
+
+- **Redesign:** one centred step hero, one card style, bundled fonts (Bricolage Grotesque and Figtree, both SIL OFL, see `docs/OFL-*.txt`), custom tab icons, a new adaptive launcher icon (with themed monochrome layer) and a matching splash.
+- **Screenshot loop:** CI renders every screen with Paparazzi (no emulator) in light, dark and 1.3x font scale, and force-pushes the PNGs to the `ci-screenshots` branch (separate, non-blocking job). Fetch it with `git fetch origin ci-screenshots`. The branch is disposable and can be deleted, along with the `screenshots` job, at any time.
+
 ## Alpha 1.1 feature tour
 
 - **The hero:** a huge centred, tabular step count that springs up inside a thick gradient ring with a goal marker and a soft glow while you walk. Under it: a verified-steps line, a raw-vs-verified chip, and pills for distance, active minutes and (only if enabled) calories. Buddies sit on the ring as avatar dots with "ahead / behind" text. Reaching the goal brings confetti, a haptic and a shareable card. The same big number stays central on the live walk screen.

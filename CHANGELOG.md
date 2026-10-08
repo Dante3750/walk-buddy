@@ -1,5 +1,14 @@
 # Changelog
 
+## alpha 1.2 (1.2.0-alpha)
+
+- UI redesign: giant centred tabular step hero, thicker gradient ring with seamless sweep and glow, single card style and radius scale, 48dp touch targets, stats strip, tonal secondary buttons.
+- Bundled fonts (Bricolage Grotesque, Figtree; OFL). Custom Canvas tab icons, bottom bar and rail.
+- New adaptive launcher icon with monochrome layer, and matching splash.
+- Screens made stateless (`XContent`) so they can be rendered in tests; Paparazzi screenshot suite and non-blocking CI `screenshots` job publishing to `ci-screenshots`.
+- Recap, summary, mood, lobby, badges, settings polish; large-font and long-text checks.
+- No behaviour, protocol or data changes. Domain tests 205, server tests 21.
+
 ## alpha 1.1 (1.1.0-alpha)
 
 - New hero: giant tabular step count inside an animated gradient ring, buddy dots, verified/raw chip, stat pills, goal confetti and haptic.
