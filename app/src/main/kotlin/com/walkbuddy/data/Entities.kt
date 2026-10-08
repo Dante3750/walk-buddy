@@ -7,6 +7,9 @@ import com.walkbuddy.domain.DayRecord
 import com.walkbuddy.domain.FavoriteSpot
 import com.walkbuddy.domain.HourSteps
 import com.walkbuddy.domain.MoodEntry
+import com.walkbuddy.domain.SharedMode
+import com.walkbuddy.domain.SharedWalkCodec
+import com.walkbuddy.domain.SharedWalkRecord
 import com.walkbuddy.domain.StepBaseline
 import com.walkbuddy.domain.StepSensorKind
 import com.walkbuddy.domain.WalkDate
@@ -103,4 +106,35 @@ data class DateEntity(
     val title: String,
 ) {
     fun toDomain() = WalkDate(id, startMs, durationMin, weekly, title)
+}
+
+/** A finished shared walk (partner or group) for the "Walks together" history. Lane and sample lists are JSON text, see SharedWalkCodec. */
+@Entity(tableName = "shared_walks")
+data class SharedWalkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val startMs: Long,
+    val durationMs: Long,
+    val mode: String,
+    val memberCount: Int,
+    val title: String,
+    val lanesJson: String,
+    val samplesJson: String,
+    val togetherPct: Int,
+    val longestTogetherMs: Long,
+    val maxGapM: Double,
+    val route: String?,
+) {
+    fun toDomain() = SharedWalkRecord(
+        id = id, startMs = startMs, durationMs = durationMs, mode = SharedMode.fromName(mode), memberCount = memberCount, title = title,
+        lanes = SharedWalkCodec.decodeLanes(lanesJson), samples = SharedWalkCodec.decodeSamples(samplesJson),
+        togetherPct = togetherPct, longestTogetherMs = longestTogetherMs, maxGapM = maxGapM, routePolyline = route,
+    )
+
+    companion object {
+        fun of(r: SharedWalkRecord) = SharedWalkEntity(
+            id = r.id, startMs = r.startMs, durationMs = r.durationMs, mode = r.mode.name, memberCount = r.memberCount, title = r.title,
+            lanesJson = SharedWalkCodec.encodeLanes(r.lanes), samplesJson = SharedWalkCodec.encodeSamples(r.samples),
+            togetherPct = r.togetherPct, longestTogetherMs = r.longestTogetherMs, maxGapM = r.maxGapM, route = r.routePolyline,
+        )
+    }
 }

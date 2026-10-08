@@ -10,6 +10,7 @@ import com.walkbuddy.domain.FavoriteSpot
 import com.walkbuddy.domain.HourSteps
 import com.walkbuddy.domain.MoodEntry
 import com.walkbuddy.domain.MoodNote
+import com.walkbuddy.domain.SharedWalkRecord
 import com.walkbuddy.domain.WalkDate
 import com.walkbuddy.domain.WalkRecord
 import com.walkbuddy.domain.WalkSummary
@@ -39,6 +40,7 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
     val walks: Flow<List<WalkRecord>> = dao.walks().map { l -> l.map { it.toDomain() } }
     val spots: Flow<List<SpotRow>> = dao.spots().map { l -> l.map { SpotRow(it.id, it.toDomain()) } }
     val dates: Flow<List<WalkDate>> = dao.dates().map { l -> l.map { it.toDomain() } }
+    val sharedWalks: Flow<List<SharedWalkRecord>> = dao.sharedWalks().map { l -> l.map { it.toDomain() } }
     val coupleDistanceM: Flow<Double> = dao.coupleDistanceM()
     val coupleDays: Flow<Set<Long>> = dao.coupleWalkDays().map { it.toSet() }
     val hours: Flow<List<HourSteps>> = dao.hours().map { l -> l.map { it.toDomain() } }
@@ -115,6 +117,17 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
         return id
     }
 
+    /** Stores a finished shared walk for the history. Returns its id. */
+    suspend fun saveSharedWalk(r: SharedWalkRecord): Long = dao.insertSharedWalk(SharedWalkEntity.of(r.copy(id = 0)))
+
+    suspend fun sharedWalk(id: Long): SharedWalkRecord? = dao.sharedWalk(id)?.toDomain()
+
+    suspend fun sharedWalksOnce(): List<SharedWalkRecord> = dao.sharedWalksOnce().map { it.toDomain() }
+
+    suspend fun deleteSharedWalk(id: Long) = dao.deleteSharedWalk(id)
+
+    suspend fun clearSharedWalks() = dao.clearSharedWalks()
+
     suspend fun addSpot(s: FavoriteSpot): Boolean {
         val existing = dao.spotsOnce().map { it.toDomain() }
         val book = com.walkbuddy.domain.SpotBook(existing)
@@ -145,7 +158,7 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
 
     /** Delete-all: every table and every preference. */
     suspend fun deleteAll() {
-        dao.clearDays(); dao.clearStepState(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges()
+        dao.clearDays(); dao.clearStepState(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges(); dao.clearSharedWalks()
         settings.clearAll()
     }
 }

@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.walkbuddy.domain.Avatar
+import com.walkbuddy.domain.AvatarCode
 import com.walkbuddy.domain.BodyProfile
 import com.walkbuddy.domain.Diet
 import com.walkbuddy.domain.LocationPrecision
@@ -73,7 +75,13 @@ data class Settings(
     // ---- alpha 1.7 ----
     /** Extra-low sampling rates everywhere (see SamplingPolicy). Off by default; Android's own Battery Saver is honoured either way. */
     val batterySaver: Boolean = false,
+    // ---- alpha 1.8 ----
+    /** My walker on the Track (see [AvatarCode]); null until chosen, then a steady look derived from the install id is used. */
+    val avatarCode: Int? = null,
 ) {
+    /** The look shown for me on the Track. */
+    val avatar: Avatar get() = AvatarCode.of(avatarCode, peerId.ifBlank { "me" })
+
     val profile: BodyProfile get() = BodyProfile(heightCm, weightKg, sex)
     val quietHours: QuietHours get() = QuietHours(quietEnabled, quietFromHour, quietToHour)
 
@@ -124,6 +132,7 @@ class SettingsStore(private val context: Context) {
         val mapTiles = booleanPreferencesKey("map_tiles")
         val saveRoutes = booleanPreferencesKey("save_routes")
         val batterySaver = booleanPreferencesKey("battery_saver")
+        val avatar = intPreferencesKey("avatar_code")
         // Background step bookkeeping
         val lastCounter = longPreferencesKey("last_counter")
         val lastCounterT = longPreferencesKey("last_counter_t")
@@ -174,6 +183,7 @@ class SettingsStore(private val context: Context) {
             mapTiles = p[K.mapTiles] ?: false,
             saveRoutes = p[K.saveRoutes] ?: false,
             batterySaver = p[K.batterySaver] ?: false,
+            avatarCode = p[K.avatar]?.takeIf { it in 0..AvatarCode.MAX },
         )
     }
 
@@ -237,6 +247,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setMapTiles(on: Boolean) = context.settingsDataStore.edit { it[K.mapTiles] = on }.let { }
     suspend fun setSaveRoutes(on: Boolean) = context.settingsDataStore.edit { it[K.saveRoutes] = on }.let { }
     suspend fun setBatterySaver(on: Boolean) = context.settingsDataStore.edit { it[K.batterySaver] = on }.let { }
+    suspend fun setAvatar(a: Avatar) = context.settingsDataStore.edit { it[K.avatar] = AvatarCode.encode(a) }.let { }
     suspend fun setRecapSeen(day: Long) = context.settingsDataStore.edit { it[K.recapSeen] = day }.let { }
 
     /** The buddy's progress as last seen during a walk. Only used to place their avatar on today's ring. */

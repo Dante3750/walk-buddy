@@ -118,6 +118,25 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertBadge(b: BadgeEntity)
 
+    // shared walks (history of partner and group walks)
+    @Query("SELECT * FROM shared_walks ORDER BY startMs DESC")
+    fun sharedWalks(): Flow<List<SharedWalkEntity>>
+
+    @Query("SELECT * FROM shared_walks ORDER BY startMs")
+    suspend fun sharedWalksOnce(): List<SharedWalkEntity>
+
+    @Query("SELECT * FROM shared_walks WHERE id = :id")
+    suspend fun sharedWalk(id: Long): SharedWalkEntity?
+
+    @Insert
+    suspend fun insertSharedWalk(w: SharedWalkEntity): Long
+
+    @Query("DELETE FROM shared_walks WHERE id = :id")
+    suspend fun deleteSharedWalk(id: Long)
+
+    @Query("DELETE FROM shared_walks")
+    suspend fun clearSharedWalks()
+
     @Query("DELETE FROM hours")
     suspend fun clearHours()
 
@@ -141,8 +160,8 @@ interface AppDao {
 }
 
 @Database(
-    entities = [DayEntity::class, WalkEntity::class, SpotEntity::class, DateEntity::class, HourEntity::class, MoodEntity::class, BadgeEntity::class, StepStateEntity::class],
-    version = 3,
+    entities = [DayEntity::class, WalkEntity::class, SpotEntity::class, DateEntity::class, HourEntity::class, MoodEntity::class, BadgeEntity::class, StepStateEntity::class, SharedWalkEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -166,9 +185,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** alpha 1.7 to 1.8: the "Walks together" history. A new table only, so nothing existing is touched. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(CREATE_SHARED_WALKS)
+            }
+        }
+
+        /** Kept as a constant so a test can check it against the entity. Column types match what Room expects for SharedWalkEntity. */
+        const val CREATE_SHARED_WALKS =
+            "CREATE TABLE IF NOT EXISTS shared_walks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, startMs INTEGER NOT NULL, " +
+                "durationMs INTEGER NOT NULL, mode TEXT NOT NULL, memberCount INTEGER NOT NULL, title TEXT NOT NULL, " +
+                "lanesJson TEXT NOT NULL, samplesJson TEXT NOT NULL, togetherPct INTEGER NOT NULL, longestTogetherMs INTEGER NOT NULL, " +
+                "maxGapM REAL NOT NULL, route TEXT)"
+
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "walkbuddy.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }
