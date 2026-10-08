@@ -8,6 +8,9 @@ import android.content.Intent
 import android.os.SystemClock
 import com.walkbuddy.WalkBuddyApplication
 import com.walkbuddy.data.Clock
+import com.walkbuddy.data.Goals
+import com.walkbuddy.domain.AnniversaryCountdown
+import com.walkbuddy.domain.ReminderPlanner
 import com.walkbuddy.domain.SitAction
 import com.walkbuddy.domain.SittingMonitor
 import kotlinx.coroutines.CoroutineScope
@@ -51,14 +54,37 @@ class PeriodicReceiver : BroadcastReceiver() {
         }
     }
 
+    /** Keeps the home-screen widget fresh even when the app is closed. */
+    private suspend fun publishWidget(c: com.walkbuddy.AppContainer, s: com.walkbuddy.data.Settings, now: Long) {
+        if (s.demoMode) return
+        val history = c.repository.allDays()
+        val day = Clock.epochDay(now)
+        val steps = history.firstOrNull { it.epochDay == day }?.verifiedSteps ?: 0
+        WidgetBridge.publish(c.appContext, steps, Goals.goalFor(day, history, s), s.displayName)
+    }
+
+    /** Anniversary and walk-date reminders: each fires once, and never during quiet hours. */
+    private suspend fun sendDueReminders(c: com.walkbuddy.AppContainer, s: com.walkbuddy.data.Settings, now: Long) {
+        val anniv = AnniversaryCountdown.parse(s.anniversaryDate)?.let { it to s.anniversaryLabel }
+        val dates = c.repository.datesOnce()
+        val sent = s.remindersSent.split('|').filter { it.isNotBlank() }.toSet()
+        val due = ReminderPlanner.due(now, java.time.ZoneId.systemDefault(), anniv, dates, sent, s.quietHours)
+        if (due.isEmpty()) return
+        due.forEach { Notifications.reminder(c.appContext, it.title, it.text) }
+        c.settings.rememberReminders(due.map { it.key })
+    }
+
     private suspend fun sample(app: WalkBuddyApplication) {
         val c = app.container
         val s = c.settings.current()
         if (!s.onboardingDone) return
         if (c.session.sessionActive) return // a walk is recording steps itself
         val now = System.currentTimeMillis()
-        val delta = c.steps.recordIdle(now) ?: return
-        if (!s.sittingReminders) return
+        val delta = c.steps.recordIdle(now)
+        publishWidget(c, s, now)
+        sendDueReminders(c, s, now)
+        if (delta == null || !s.sittingReminders) return
+        if (s.quietHours.isQuiet(Clock.hourOfDay(now))) return
         val monitor = SittingMonitor()
         c.settings.sitState()?.let { monitor.restore(it) }
         // Moving = enough steps since the last ~15 minute sample to count as getting up.

@@ -39,10 +39,10 @@ import com.walkbuddy.domain.QrEncoder
 fun SectionCard(
     title: String?,
     modifier: Modifier = Modifier,
-    container: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    container: Color = MaterialTheme.colorScheme.surfaceContainer,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = container)) {
+    Card(modifier = modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = container)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleMedium)
             content()

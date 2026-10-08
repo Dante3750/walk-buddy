@@ -2,7 +2,11 @@ package com.walkbuddy.data
 
 import com.walkbuddy.domain.CsvExport
 import com.walkbuddy.domain.DayRecord
+import com.walkbuddy.domain.BadgeId
 import com.walkbuddy.domain.FavoriteSpot
+import com.walkbuddy.domain.HourSteps
+import com.walkbuddy.domain.MoodEntry
+import com.walkbuddy.domain.MoodNote
 import com.walkbuddy.domain.WalkDate
 import com.walkbuddy.domain.WalkRecord
 import com.walkbuddy.domain.WalkSummary
@@ -34,11 +38,35 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
     val dates: Flow<List<WalkDate>> = dao.dates().map { l -> l.map { it.toDomain() } }
     val coupleDistanceM: Flow<Double> = dao.coupleDistanceM()
     val coupleDays: Flow<Set<Long>> = dao.coupleWalkDays().map { it.toSet() }
+    val hours: Flow<List<HourSteps>> = dao.hours().map { l -> l.map { it.toDomain() } }
+    val moods: Flow<List<MoodEntry>> = dao.moods().map { l -> l.map { it.toDomain() } }
+    val badges: Flow<Map<BadgeId, Long>> = dao.badges().map { l ->
+        l.mapNotNull { e -> runCatching { BadgeId.valueOf(e.id) }.getOrNull()?.let { it to e.unlockedMs } }.toMap()
+    }
 
-    suspend fun addSteps(epochDay: Long, raw: Long, verified: Long) {
+    /** [hour] (0..23) also feeds the hour-by-hour histogram. */
+    suspend fun addSteps(epochDay: Long, raw: Long, verified: Long, hour: Int? = null) {
         if (raw <= 0 && verified <= 0) return
         val d = dao.day(epochDay) ?: DayEntity(epochDay, 0, 0, 0, 0, 0.0, false)
         dao.upsertDay(d.copy(rawSteps = (d.rawSteps + raw).toInt(), verifiedSteps = (d.verifiedSteps + verified).toInt()))
+        if (hour != null && verified > 0) {
+            val v = verified.toInt()
+            if (dao.bumpHour(epochDay, hour, v) == 0) dao.putHour(HourEntity(epochDay, hour, v))
+        }
+    }
+
+    suspend fun setGentle(epochDay: Long, gentle: Boolean) {
+        val d = dao.day(epochDay) ?: DayEntity(epochDay, 0, 0, 0, 0, 0.0, false)
+        dao.upsertDay(d.copy(gentle = gentle))
+    }
+
+    suspend fun addMood(mood: Int, note: String, walkId: Long?, nowMs: Long = System.currentTimeMillis()): Long =
+        dao.insertMood(MoodEntity(epochDay = Clock.epochDay(nowMs), atMs = nowMs, mood = mood.coerceIn(1, 5), note = MoodNote.clean(note), walkId = walkId))
+
+    suspend fun deleteMood(id: Long) = dao.deleteMood(id)
+
+    suspend fun recordBadges(ids: Collection<BadgeId>, nowMs: Long = System.currentTimeMillis()) {
+        ids.forEach { dao.insertBadge(BadgeEntity(it.name, nowMs)) }
     }
 
     suspend fun setRestDay(epochDay: Long, rest: Boolean) {
@@ -47,6 +75,12 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
     }
 
     suspend fun day(epochDay: Long): DayRecord? = dao.day(epochDay)?.toDomain()
+
+    suspend fun coupleDistanceNow(): Double = dao.coupleDistanceOnce()
+
+    suspend fun datesOnce(): List<WalkDate> = dao.datesOnce().map { it.toDomain() }
+
+    suspend fun allDays(): List<DayRecord> = dao.daysOnce().map { it.toDomain() }
 
     /** Steps are added to the day incrementally during the walk; here we add distance and active minutes and store the walk. */
     suspend fun saveWalk(s: WalkSummary, startMs: Long): Long {
@@ -88,11 +122,13 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
         append(CsvExport.walks(dao.walksOnce().map { it.toDomain() }))
         append("\r\n# favorite spots\r\n")
         append(CsvExport.spots(dao.spotsOnce().map { it.toDomain() }))
+        append("\r\n# mood check-ins\r\n")
+        append(CsvExport.moods(dao.moodsOnce().map { it.toDomain() }))
     }
 
     /** Delete-all: every table and every preference. */
     suspend fun deleteAll() {
-        dao.clearDays(); dao.clearWalks(); dao.clearSpots(); dao.clearDates()
+        dao.clearDays(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges()
         settings.clearAll()
     }
 }

@@ -1,5 +1,6 @@
 package com.walkbuddy.ui
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -8,46 +9,102 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.walkbuddy.AppContainer
 import com.walkbuddy.WalkBuddyApplication
 import com.walkbuddy.data.Clock
-import com.walkbuddy.data.GoalMode
+import com.walkbuddy.data.Goals
 import com.walkbuddy.data.Settings
 import com.walkbuddy.data.SpotRow
 import com.walkbuddy.domain.AdaptiveGoal
+import com.walkbuddy.domain.AnniversaryCountdown
+import com.walkbuddy.domain.BadgeEngine
+import com.walkbuddy.domain.BadgeId
+import com.walkbuddy.domain.BadgeInput
+import com.walkbuddy.domain.BadgeProgress
 import com.walkbuddy.domain.CalorieEstimator
 import com.walkbuddy.domain.CalorieRange
 import com.walkbuddy.domain.Catalogue
 import com.walkbuddy.domain.DayRecord
+import com.walkbuddy.domain.DemoBundle
+import com.walkbuddy.domain.DemoData
 import com.walkbuddy.domain.FavoriteSpot
+import com.walkbuddy.domain.FlameInfo
 import com.walkbuddy.domain.FoodItem
+import com.walkbuddy.domain.GentleDay
+import com.walkbuddy.domain.Hero
+import com.walkbuddy.domain.HourSteps
+import com.walkbuddy.domain.HourlyHistogram
+import com.walkbuddy.domain.HourlyProfile
+import com.walkbuddy.domain.MonthGrid
+import com.walkbuddy.domain.MonthGridModel
 import com.walkbuddy.domain.MonthlyPattern
+import com.walkbuddy.domain.MoodEntry
+import com.walkbuddy.domain.MoodInsight
+import com.walkbuddy.domain.MoodInsights
+import com.walkbuddy.domain.OurWeek
+import com.walkbuddy.domain.OurWeekCard
 import com.walkbuddy.domain.ProfileCheck
+import com.walkbuddy.domain.RecapSlide
+import com.walkbuddy.domain.Reaction
 import com.walkbuddy.domain.RefuelIdeas
 import com.walkbuddy.domain.RefuelPlanner
+import com.walkbuddy.domain.RingBuddy
 import com.walkbuddy.domain.StepLength
+import com.walkbuddy.domain.StreakFlame
 import com.walkbuddy.domain.StreakResult
 import com.walkbuddy.domain.Streaks
+import com.walkbuddy.domain.UnitSystem
 import com.walkbuddy.domain.WalkDate
 import com.walkbuddy.domain.WalkRecord
 import com.walkbuddy.domain.WeeklyGuidance
+import com.walkbuddy.domain.WeeklyRecapBuilder
 import com.walkbuddy.domain.WeeklyReport
+import com.walkbuddy.notify.Notifications
+import com.walkbuddy.notify.WidgetBridge
 import com.walkbuddy.rtc.SignalingClient
 import com.walkbuddy.session.SessionUi
 import com.walkbuddy.session.WalkService
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+@Immutable
 data class HomeUi(
     val rawSteps: Int,
     val verifiedSteps: Int,
     val goal: Int,
+    val baseGoal: Int,
+    val gentle: Boolean,
     val restDay: Boolean,
+    val distanceM: Double,
+    val activeMin: Int,
+    val activeIsEstimate: Boolean,
+    val calories: CalorieRange?,
     val guidance: WeeklyGuidance.Progress,
     val streak: StreakResult,
+    val flame: FlameInfo,
+    val buddies: List<RingBuddy>,
+    val unit: UnitSystem,
+    val name: String,
+    val demo: Boolean,
+    val countdown: String?,
+    val daysTogether: String?,
+    val walking: Boolean,
 )
 
+@Immutable
 data class FuelUi(
     val pattern: MonthlyPattern,
     val calories: CalorieRange?,
@@ -55,29 +112,71 @@ data class FuelUi(
     val ideas: RefuelIdeas,
 )
 
+@Immutable
+data class TrendsUi(
+    val hourly: HourlyProfile,
+    val month: MonthGridModel,
+    val monthTitle: String,
+    val canGoForward: Boolean,
+    val moodInsight: MoodInsight,
+    val recentMoods: List<MoodEntry>,
+    val ourWeek: OurWeekCard,
+    val unit: UnitSystem,
+)
+
+@Immutable
+data class BadgeRow(val id: BadgeId, val earned: Boolean, val unlockedMs: Long?, val progress: BadgeProgress)
+
+@Immutable
+data class UsUi(val unit: UnitSystem, val coupleDistanceM: Double, val buddyName: String)
+
 class AppViewModel(private val c: AppContainer, private val appContext: android.content.Context) : ViewModel() {
     val settings: StateFlow<Settings?> = c.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val session: StateFlow<SessionUi> = c.session.ui
     val spots: StateFlow<List<SpotRow>> = c.repository.spots.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val dates: StateFlow<List<WalkDate>> = c.repository.dates.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val coupleDistanceM: StateFlow<Double> = c.repository.coupleDistanceM.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
-    val coupleDays: StateFlow<Set<Long>> = c.repository.coupleDays.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
-    val walks: StateFlow<List<WalkRecord>> = c.repository.walks.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val days: StateFlow<List<DayRecord>> = c.repository.days.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Demo mode swaps every data source for believable sample data. Nothing is written while it is on. */
+    private val demo: StateFlow<DemoBundle?> = settings.map { it?.demoMode == true }.distinctUntilChanged()
+        .map { on -> if (on) DemoData.build(Clock.today()) else null }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Steps added on top of the demo's "today" so the ring visibly moves. */
+    private val demoExtra = MutableStateFlow(0)
+    private val clockTick = MutableStateFlow(0)
+
+    private val dbDays = c.repository.days.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val dbWalks = c.repository.walks.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val dbHours = c.repository.hours.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val dbMoods = c.repository.moods.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val dbCoupleDays = c.repository.coupleDays.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+    private val dbCoupleDistance = c.repository.coupleDistanceM.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
+    private val dbBadges = c.repository.badges.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    private val days: StateFlow<List<DayRecord>> = combine(dbDays, demo) { d, dm -> dm?.days ?: d }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val walks: StateFlow<List<WalkRecord>> = combine(dbWalks, demo) { w, dm -> dm?.walks?.sortedByDescending { it.startMs } ?: w }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val hours: StateFlow<List<HourSteps>> = combine(dbHours, demo) { h, dm -> dm?.hours ?: h }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val moods: StateFlow<List<MoodEntry>> = combine(dbMoods, demo) { m, dm -> dm?.moods?.sortedByDescending { it.atMs } ?: m }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val coupleDays: StateFlow<Set<Long>> = combine(dbCoupleDays, demo) { d, dm -> dm?.coupleDays ?: d }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+    val coupleDistanceM: StateFlow<Double> = combine(dbCoupleDistance, demo) { d, dm -> dm?.coupleDistanceM ?: d }.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
 
     /** A walkbuddy:// link opened from outside the app, waiting for the user to confirm. */
     val pendingJoin = MutableStateFlow<String?>(null)
 
+    /** Set by launcher shortcuts and the quick settings tile: "start_solo" or "recap". */
+    val pendingAction = MutableStateFlow<String?>(null)
+
     private val catalogue: List<FoodItem> by lazy { Catalogue.bundled() }
 
-    val home: StateFlow<HomeUi?> = combine(days, settings) { d, s -> if (s == null) null else buildHome(d, s) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val home: StateFlow<HomeUi?> = combine(days, settings, demo, demoExtra, c.session.ui) { d, s, dm, extra, ses ->
+        if (s == null) null else buildHome(d, s, dm, extra, ses.phase == com.walkbuddy.session.Phase.Walking)
+    }.combine(clockTick) { h, _ -> h }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val weekly: StateFlow<WeeklyReport> = combine(days, walks) { d, w -> WeeklyReport.build(d, w, Clock.today()) }
+    val weekly: StateFlow<WeeklyReport> = combine(days, walks, clockTick) { d, w, _ -> WeeklyReport.build(d, w, Clock.today()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, WeeklyReport.build(emptyList(), emptyList(), Clock.today()))
 
     /** Steps for the last 7 days, oldest first (for the chart). */
-    val weekBars: StateFlow<List<Pair<Long, Int>>> = days.combine(settings) { d, _ ->
+    val weekBars: StateFlow<List<Pair<Long, Int>>> = combine(days, clockTick) { d, _ ->
         val today = Clock.today()
         (6 downTo 0).map { off -> (today - off) to (d.firstOrNull { it.epochDay == today - off }?.verifiedSteps ?: 0) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -88,23 +187,154 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         if (s == null) null else buildFuel(d, w, s, hot)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private fun planFor(day: Long, history: List<DayRecord>, s: Settings) =
-        AdaptiveGoal.planFor(day, history, s.restWeekdays, if (s.goalMode == GoalMode.Fixed) s.fixedGoal else null)
+    /** 0 = this month, -1 = last month, and so on. */
+    val monthOffset = MutableStateFlow(0)
 
-    private fun buildHome(d: List<DayRecord>, s: Settings): HomeUi {
+    val trends: StateFlow<TrendsUi?> = combine(days, hours, moods, walks, coupleDays) { d, h, m, w, cd -> TrendInputs(d, h, m, w, cd) }
+        .combine(monthOffset) { t, off -> t to off }
+        .combine(settings) { (t, off), s -> if (s == null) null else buildTrends(t, off, s, demo.value) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private class TrendInputs(val days: List<DayRecord>, val hours: List<HourSteps>, val moods: List<MoodEntry>, val walks: List<WalkRecord>, val coupleDays: Set<Long>)
+
+    val recap: StateFlow<List<RecapSlide>> = combine(days, walks, hours, settings, coupleDays) { d, w, h, s, cd ->
+        if (s == null) emptyList() else buildRecap(d, w, h, s, cd)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val badges: StateFlow<List<BadgeRow>> = combine(days, walks, moods, coupleDays, settings) { d, w, m, cd, s ->
+        if (s == null) emptyList() else buildBadges(d, w, m, cd, coupleDistanceM.value, s)
+    }.combine(dbBadges) { rows, stored ->
+        rows.map { r -> if (demo.value != null) r else r.copy(unlockedMs = stored[r.id]) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _badgeEvents = MutableSharedFlow<List<BadgeId>>(extraBufferCapacity = 4)
+
+    /** Fires once when badges unlock, so the UI can celebrate and announce them to TalkBack. */
+    val badgeEvents: SharedFlow<List<BadgeId>> = _badgeEvents.asSharedFlow()
+
+    init {
+        // Haptics preference is also read by non-UI code (nudges, pings).
+        viewModelScope.launch { settings.collect { s -> if (s != null) Notifications.hapticsEnabled = s.haptics } }
+
+        // Demo: the ring keeps moving so the hero feels alive.
+        viewModelScope.launch {
+            demo.map { it != null }.distinctUntilChanged().collectLatest { on ->
+                demoExtra.value = 0
+                while (on) {
+                    delay(2_000)
+                    val walking = c.session.ui.value.demo
+                    demoExtra.update { (it + if (walking) 30 else 12).coerceAtMost(9_000) }
+                }
+            }
+        }
+
+        // Keep the home-screen widget in step with the app.
+        viewModelScope.launch {
+            home.collect { h ->
+                if (h != null && !h.demo) WidgetBridge.publish(appContext, h.verifiedSteps, h.goal, h.name)
+            }
+        }
+
+        // Badge unlocks: evaluated against the real database only, and only once every table has been read.
+        viewModelScope.launch {
+            combine(c.repository.days, c.repository.walks, c.repository.moods, c.repository.coupleDays, c.repository.badges) { d, w, m, cd, stored ->
+                BadgeSnapshot(d, w, m, cd, stored.keys)
+            }.combine(settings) { snap, s -> snap to s }.collect { (snap, s) ->
+                if (s == null || s.demoMode) return@collect
+                val dist = c.repository.coupleDistanceNow()
+                val earned = BadgeEngine.evaluate(badgeInput(snap.days, snap.walks, snap.moods, snap.coupleDays, dist, s))
+                val fresh = BadgeEngine.newlyUnlocked(earned, snap.stored)
+                if (fresh.isNotEmpty()) {
+                    c.repository.recordBadges(fresh)
+                    _badgeEvents.tryEmit(fresh)
+                }
+            }
+        }
+    }
+
+    private class BadgeSnapshot(val days: List<DayRecord>, val walks: List<WalkRecord>, val moods: List<MoodEntry>, val coupleDays: Set<Long>, val stored: Set<BadgeId>)
+
+    // ---------- builders ----------
+
+    private fun badgeInput(d: List<DayRecord>, w: List<WalkRecord>, m: List<MoodEntry>, cd: Set<Long>, dist: Double, s: Settings): BadgeInput {
         val today = Clock.today()
-        val rec = d.firstOrNull { it.epochDay == today }
-        val plan = planFor(today, d, s)
-        val week = d.filter { it.epochDay in (today - 6)..today }
-        val met = d.filter { it.epochDay < today || it.verifiedSteps > 0 }
-            .filter { it.verifiedSteps >= planFor(it.epochDay, d, s).goal }.map { it.epochDay }.toSet()
+        val met = metDays(d, s)
         val streak = Streaks.compute(met, today, d.minOfOrNull { it.epochDay } ?: today, s.restWeekdays)
+        return BadgeInput(d, w, { day -> Goals.goalFor(day, d, s) }, cd, dist, streak.longest, m.size)
+    }
+
+    private fun metDays(d: List<DayRecord>, s: Settings): Set<Long> {
+        val today = Clock.today()
+        return d.filter { it.epochDay < today || it.verifiedSteps > 0 }
+            .filter { it.verifiedSteps > 0 && it.verifiedSteps >= Goals.goalFor(it.epochDay, d, s) }.map { it.epochDay }.toSet()
+    }
+
+    private fun buildHome(d0: List<DayRecord>, s: Settings, dm: DemoBundle?, extra: Int, walking: Boolean): HomeUi {
+        val today = Clock.today()
+        val d = if (dm != null) d0.map { if (it.epochDay == today) it.copy(verifiedSteps = it.verifiedSteps + extra, rawSteps = it.rawSteps + extra) else it } else d0
+        val rec = d.firstOrNull { it.epochDay == today }
+        val plan = Goals.plan(today, d, s)
+        val gentle = rec?.gentle == true
+        val goal = if (dm != null) DemoData.GOAL else GentleDay.effectiveGoal(plan.goal, gentle)
+        val steps = rec?.verifiedSteps ?: 0
+        val week = d.filter { it.epochDay in (today - 6)..today }
+        val met = metDays(d, s) + (if (steps > 0 && steps >= goal) setOf(today) else emptySet())
+        val streak = Streaks.compute(met, today, d.minOfOrNull { it.epochDay } ?: today, s.restWeekdays)
+        val restToday = plan.isRestDay || rec?.restDay == true
+        val flame = StreakFlame.info(streak, steps >= goal && steps > 0, restToday, Clock.hourOfDay())
+        val recordedActive = (rec?.moderateMin ?: 0) + (rec?.vigorousMin ?: 0)
+        val distance = Hero.distanceM(steps, rec?.distanceM ?: 0.0, s.stepLengthM)
+        val activeMin = Hero.activeMinutes(steps, recordedActive)
+        val kcal = if (!s.caloriesEnabled || steps < 200) null else
+            CalorieEstimator.estimate(s.profile, (steps / 105.0 * 60_000).toLong(), null, steps.toLong(), s.stepLengthM)
+        val buddies = when {
+            dm != null -> listOf(RingBuddy("demo", dm.buddyName, dm.buddyStepsToday + extra / 2, dm.buddyGoal))
+            s.buddyDay == today && s.buddyGoal > 0 -> listOf(RingBuddy("buddy", s.buddyName.ifBlank { "Buddy" }, s.buddySteps, s.buddyGoal))
+            else -> emptyList()
+        }
+        val anniv = AnniversaryCountdown.parse(s.anniversaryDate)
+        val countdown = anniv?.let { AnniversaryCountdown.info(it, s.anniversaryLabel, LocalDate.now()).text }
+        val together = anniv?.let { a -> AnniversaryCountdown.daysTogether(a, LocalDate.now())?.let { "Day ${Hero.thousands(it.toInt())} together" } }
         return HomeUi(
-            rawSteps = rec?.rawSteps ?: 0, verifiedSteps = rec?.verifiedSteps ?: 0, goal = plan.goal,
-            restDay = plan.isRestDay || rec?.restDay == true,
+            rawSteps = rec?.rawSteps ?: 0, verifiedSteps = steps, goal = goal, baseGoal = plan.goal, gentle = gentle, restDay = restToday,
+            distanceM = distance, activeMin = activeMin, activeIsEstimate = Hero.activeIsEstimate(recordedActive), calories = kcal,
             guidance = WeeklyGuidance.progress(week.sumOf { it.moderateMin }, week.sumOf { it.vigorousMin }),
-            streak = streak,
+            streak = streak, flame = flame, buddies = buddies, unit = s.unitSystem, name = s.displayName, demo = dm != null,
+            countdown = countdown, daysTogether = together, walking = walking || (dm != null && extra > 0 && extra % 24 != 0),
         )
+    }
+
+    private fun buildTrends(t: TrendInputs, offset: Int, s: Settings, dm: DemoBundle?): TrendsUi {
+        val today = Clock.today()
+        val ym = YearMonth.now().plusMonths(offset.toLong())
+        val stepsByDay = t.days.associate { it.epochDay to it.verifiedSteps }
+        val month = MonthGrid.build(ym.year, ym.monthValue, stepsByDay, { day -> Goals.goalFor(day, t.days, s) }, today)
+        val title = ym.month.getDisplayName(TextStyle.FULL, Locale.getDefault()) + " " + ym.year
+        val hourly = HourlyHistogram.build(t.hours, today)
+        val insight = MoodInsights.compute(t.moods, stepsByDay)
+        val report = WeeklyReport.build(t.days, t.walks, today)
+        val buddyName = dm?.buddyName ?: s.buddyName
+        val ourWeek = OurWeek.build(report, t.walks.filter { it.buddyCount >= 1 }, t.coupleDays, today, buddyName, s.unitSystem)
+        return TrendsUi(hourly, month, title, offset < 0, insight, t.moods.take(5), ourWeek, s.unitSystem)
+    }
+
+    private fun buildRecap(d: List<DayRecord>, w: List<WalkRecord>, h: List<HourSteps>, s: Settings, cd: Set<Long>): List<RecapSlide> {
+        val today = Clock.today()
+        val report = WeeklyReport.build(d, w, today)
+        val weekWalks = w.filter { it.epochDay in (today - 6)..today && it.buddyCount >= 1 }
+        val metSet = metDays(d, s)
+        val streak = Streaks.compute(metSet, today, d.minOfOrNull { it.epochDay } ?: today, s.restWeekdays)
+        val flame = StreakFlame.info(streak, today in metSet, false, 12)
+        return WeeklyRecapBuilder.build(
+            report, d, today, weekWalks.size, weekWalks.sumOf { it.distanceM }, HourlyHistogram.build(h, today), flame, s.unitSystem,
+            android.text.format.DateFormat.is24HourFormat(appContext),
+        )
+    }
+
+    private fun buildBadges(d: List<DayRecord>, w: List<WalkRecord>, m: List<MoodEntry>, cd: Set<Long>, dist: Double, s: Settings): List<BadgeRow> {
+        val input = badgeInput(d, w, m, cd, dist, s)
+        val earned = BadgeEngine.evaluate(input)
+        return BadgeId.values().map { BadgeRow(it, it in earned, null, BadgeEngine.progress(it, input)) }
     }
 
     private fun buildFuel(d: List<DayRecord>, w: List<WalkRecord>, s: Settings, hot: Boolean): FuelUi {
@@ -138,18 +368,25 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
 
     // ---------- actions ----------
 
+    private val isDemo: Boolean get() = demo.value != null
+
+    fun onResume() { clockTick.update { it + 1 } }
+
     fun startLobby(codeOrLink: String?, solo: Boolean = false) {
         c.session.openLobby(codeOrLink, null, solo)
         WalkService.start(appContext)
     }
 
+    fun startDemoWalk() = c.session.startDemoWalk()
     fun startWalking() = c.session.startWalking()
     fun endWalk() = c.session.endWalk()
     fun leaveLobby() = c.session.leave()
     fun finishSummary() = c.session.finishSummary()
     fun setQuiet(on: Boolean) = c.session.setQuiet(on)
     fun sendPing(): Boolean = c.session.sendPing()
+    fun sendReaction(r: Reaction): Boolean = c.session.sendReaction(r)
     fun dismissBanner() = c.session.dismissBanner()
+    fun dismissReaction() = c.session.dismissReaction()
     fun shareSpot(s: FavoriteSpot) = c.session.shareSpot(s)
     fun acceptSpot(save: Boolean) = c.session.acceptSpotOffer(save)
 
@@ -157,7 +394,40 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         viewModelScope.launch { c.settings.block() }
     }
 
-    fun setRestToday(rest: Boolean) = viewModelScope.launch { c.repository.setRestDay(Clock.today(), rest) }.let { }
+    fun setDemoMode(on: Boolean) {
+        if (!on && c.session.ui.value.demo) c.session.leave()
+        saveSettings { setDemoMode(on) }
+    }
+
+    /** Demo only: jump to just past the goal so the celebration can be seen right away. */
+    fun demoReachGoal() {
+        val h = home.value ?: return
+        if (isDemo) demoExtra.update { it + (h.goal - h.verifiedSteps + 40).coerceAtLeast(0) }
+    }
+
+    fun setRestToday(rest: Boolean) { if (!isDemo) viewModelScope.launch { c.repository.setRestDay(Clock.today(), rest) } }
+
+    fun setGentleToday(gentle: Boolean) { if (!isDemo) viewModelScope.launch { c.repository.setGentle(Clock.today(), gentle) } }
+
+    private val demoCelebrated = MutableStateFlow(false)
+
+    /** True once today's goal celebration has been shown (persisted for real data, in memory for the demo). */
+    val celebratedToday: StateFlow<Boolean> = combine(settings, demoCelebrated, clockTick) { s, dc, _ ->
+        dc || (s != null && s.celebratedDay == Clock.today())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun markCelebrated() {
+        if (isDemo) demoCelebrated.value = true else saveSettings { setCelebratedDay(Clock.today()) }
+    }
+
+    fun addMood(mood: Int, note: String, walkId: Long?) {
+        if (isDemo) return
+        viewModelScope.launch { c.repository.addMood(mood, note, walkId) }
+    }
+
+    fun deleteMood(id: Long) { if (!isDemo) viewModelScope.launch { c.repository.deleteMood(id) } }
+
+    fun shiftMonth(delta: Int) { monthOffset.update { (it + delta).coerceAtMost(0).coerceAtLeast(-24) } }
 
     fun addDate(d: WalkDate) = viewModelScope.launch { c.repository.addDate(d) }.let { }
     fun deleteDate(id: Long) = viewModelScope.launch { c.repository.deleteDate(id) }.let { }
@@ -174,7 +444,7 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     }
 
     fun calibrateStepLength(done: (String) -> Unit) {
-        val last = walks.value.firstOrNull { it.distanceM >= 120 && it.verifiedSteps >= 200 }
+        val last = dbWalks.value.firstOrNull { it.distanceM >= 120 && it.verifiedSteps >= 200 }
         val len = last?.let { StepLength.calibrate(it.distanceM, it.verifiedSteps.toLong()) }
         if (len == null) { done("Needs a recent walk of at least 120 m and 200 steps with GPS."); return }
         viewModelScope.launch { c.settings.setStepLength(len); done("Step length set to ${"%.2f".format(len)} m") }

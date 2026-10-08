@@ -4,4 +4,11 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/window_background</item>
     </style>
+
+    <!-- Shown by the SplashScreen API while the app starts; switches to Theme.WalkBuddy afterwards. -->
+    <style name="Theme.WalkBuddy.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/window_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.WalkBuddy</item>
+    </style>
 </resources>

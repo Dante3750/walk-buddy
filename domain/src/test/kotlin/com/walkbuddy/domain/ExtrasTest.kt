@@ -171,4 +171,12 @@ class ExtrasTest {
         val none = OurWeek.build(report, emptyList(), emptySet(), today, null, UnitSystem.Imperial)
         assertEquals("Walked with your buddy on 0 of 7 days", none.lines[0]); assertEquals("0.0 mi", none.headlineValue)
     }
+
+    @Test fun moodCsvExportGuardsFormulas() {
+        val csv = CsvExport.moods(listOf(MoodEntry(1, 5, 20, 4, "=SUM(A1)", null), MoodEntry(2, 4, 10, 3, "nice, calm", 9)))
+        val lines = csv.trim().split("\r\n")
+        assertEquals("epoch_day,at_ms,mood,note", lines[0])
+        assertEquals("4,10,3,\"nice, calm\"", lines[1])
+        assertEquals("5,20,4,'=SUM(A1)", lines[2])
+    }
 }

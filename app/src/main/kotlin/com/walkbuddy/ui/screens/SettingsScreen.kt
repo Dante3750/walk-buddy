@@ -43,6 +43,11 @@ import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.Diet
 import com.walkbuddy.domain.ProfileCheck
 import com.walkbuddy.domain.Sex
+import com.walkbuddy.domain.UnitSystem
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Switch
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.walkbuddy.health.HealthBridges
 import com.walkbuddy.notify.PeriodicSampler
 import com.walkbuddy.ui.AppViewModel
@@ -63,13 +68,17 @@ fun SettingsScreen(vm: AppViewModel) {
         return
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Settings", style = MaterialTheme.typography.titleLarge)
+        Text("Settings", style = MaterialTheme.typography.headlineSmall)
+        AppearanceSection(vm, s)
         ProfileSection(vm, s)
         GoalSection(vm, s)
+        StepLengthSection(vm, s)
+        QuietHoursSection(vm, s)
         WalkSection(vm, s)
         ServerSection(vm, s)
         ExtrasSection(vm, s)
         HealthSection(vm, s)
+        DemoSection(vm, s)
         DataSection(vm)
         SectionCard("About") {
             Text(Copy.WELLNESS)
@@ -284,5 +293,74 @@ private fun DataSection(vm: AppViewModel) {
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun AppearanceSection(vm: AppViewModel, s: Settings) {
+    SectionCard("Look and feel") {
+        Text("Distances in", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = s.unitSystem == UnitSystem.Metric, onClick = { vm.saveSettings { setUnits(UnitSystem.Metric) } }, label = { Text("Kilometres") }, modifier = Modifier.heightIn(min = 48.dp))
+            FilterChip(selected = s.unitSystem == UnitSystem.Imperial, onClick = { vm.saveSettings { setUnits(UnitSystem.Imperial) } }, label = { Text("Miles") }, modifier = Modifier.heightIn(min = 48.dp))
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            ToggleRow("Use my wallpaper colours", "Material You colours instead of Walk Buddy's dusk palette.", s.dynamicColor) { on -> vm.saveSettings { setDynamicColor(on) } }
+        }
+        ToggleRow("Reduce motion", "Numbers jump instead of counting up, and there is no confetti or flicker. Also follows Android's animation setting.", s.reduceMotion) { on -> vm.saveSettings { setReduceMotion(on) } }
+        ToggleRow("Haptics", "Small vibrations for pings, reactions and reaching your goal.", s.haptics) { on -> vm.saveSettings { setHaptics(on) } }
+    }
+}
+
+@Composable
+private fun StepLengthSection(vm: AppViewModel, s: Settings) {
+    val ctx = LocalContext.current
+    var cm by remember(s.stepLengthM) { mutableStateOf((s.stepLengthM * 100).toFloat().coerceIn(40f, 120f)) }
+    SectionCard("Step length") {
+        Text("Used for distance when you are not on a GPS walk: ${cm.toInt()} cm", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = cm, onValueChange = { cm = it }, valueRange = 40f..120f,
+            modifier = Modifier.semantics { contentDescription = "Step length in centimetres" },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { vm.saveSettings { setStepLength(cm.toInt() / 100.0) } }) { Text("Save") }
+            OutlinedButton(onClick = { vm.calibrateStepLength { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() } }) { Text("Calibrate from my last walk") }
+        }
+        if (s.calibratedStepLengthM != null) {
+            TextButton(onClick = { vm.saveSettings { setStepLength(null) } }) { Text("Go back to the estimate from my height") }
+        }
+        Disclaimer("A typical step is 60 to 80 cm. A walk of at least 120 m with GPS gives the best calibration.")
+    }
+}
+
+@Composable
+private fun QuietHoursSection(vm: AppViewModel, s: Settings) {
+    var from by remember(s.quietFromHour) { mutableStateOf(s.quietFromHour.toFloat()) }
+    var to by remember(s.quietToHour) { mutableStateOf(s.quietToHour.toFloat()) }
+    SectionCard("Quiet hours") {
+        ToggleRow("Silence reminders and nudges", "Walk date and anniversary reminders, sitting breaks and walk nudges wait until the quiet hours end.", s.quietEnabled) { on ->
+            vm.saveSettings { setQuietHours(on, from.toInt(), to.toInt()) }
+        }
+        if (s.quietEnabled) {
+            Text("From %02d:00".format(from.toInt()), style = MaterialTheme.typography.bodyMedium)
+            Slider(
+                value = from, onValueChange = { from = it }, valueRange = 0f..23f, steps = 22,
+                onValueChangeFinished = { vm.saveSettings { setQuietHours(true, from.toInt(), to.toInt()) } },
+                modifier = Modifier.semantics { contentDescription = "Quiet hours start" },
+            )
+            Text("Until %02d:00".format(to.toInt()), style = MaterialTheme.typography.bodyMedium)
+            Slider(
+                value = to, onValueChange = { to = it }, valueRange = 0f..23f, steps = 22,
+                onValueChangeFinished = { vm.saveSettings { setQuietHours(true, from.toInt(), to.toInt()) } },
+                modifier = Modifier.semantics { contentDescription = "Quiet hours end" },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DemoSection(vm: AppViewModel, s: Settings) {
+    SectionCard("Demo mode") {
+        ToggleRow("Show demo data", "Sample steps, badges and a pretend buddy named Sam. Works with no permissions and saves nothing. Your real data is untouched.", s.demoMode) { on -> vm.setDemoMode(on) }
     }
 }

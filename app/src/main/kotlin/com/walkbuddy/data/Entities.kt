@@ -1,9 +1,12 @@
 package com.walkbuddy.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.walkbuddy.domain.DayRecord
 import com.walkbuddy.domain.FavoriteSpot
+import com.walkbuddy.domain.HourSteps
+import com.walkbuddy.domain.MoodEntry
 import com.walkbuddy.domain.WalkDate
 import com.walkbuddy.domain.WalkRecord
 
@@ -16,9 +19,30 @@ data class DayEntity(
     val vigorousMin: Int,
     val distanceM: Double,
     val restDay: Boolean,
+    @ColumnInfo(defaultValue = "0") val gentle: Boolean = false,
 ) {
-    fun toDomain() = DayRecord(epochDay, rawSteps, verifiedSteps, moderateMin, vigorousMin, distanceM, restDay)
+    fun toDomain() = DayRecord(epochDay, rawSteps, verifiedSteps, moderateMin, vigorousMin, distanceM, restDay, gentle)
 }
+
+@Entity(tableName = "hours", primaryKeys = ["epochDay", "hour"])
+data class HourEntity(val epochDay: Long, val hour: Int, val steps: Int) {
+    fun toDomain() = HourSteps(epochDay, hour, steps)
+}
+
+@Entity(tableName = "moods")
+data class MoodEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val atMs: Long,
+    val mood: Int,
+    val note: String,
+    val walkId: Long?,
+) {
+    fun toDomain() = MoodEntry(id, epochDay, atMs, mood, note, walkId)
+}
+
+@Entity(tableName = "badges")
+data class BadgeEntity(@PrimaryKey val id: String, val unlockedMs: Long)
 
 @Entity(tableName = "walks")
 data class WalkEntity(

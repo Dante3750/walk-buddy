@@ -17,6 +17,9 @@ import com.walkbuddy.MainActivity
 import com.walkbuddy.R
 
 object Notifications {
+    /** Mirrors the Haptics setting; read by every vibration in the app. */
+    @Volatile var hapticsEnabled: Boolean = true
+
     const val CH_WALK = "walk"
     const val CH_NUDGE = "nudge"
     const val CH_REMIND = "remind"
@@ -81,6 +84,7 @@ object Notifications {
     /** A short, soft haptic. Silently does nothing without a vibrator. */
     @Suppress("DEPRECATION")
     fun haptic(context: Context, strong: Boolean = false) {
+        if (!hapticsEnabled) return
         val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
         if (!v.hasVibrator()) return
         val ms = if (strong) 250L else 120L

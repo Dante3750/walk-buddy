@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_walk"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_walk"
+        android:shortcutShortLabel="@string/shortcut_start_short"
+        android:shortcutLongLabel="@string/shortcut_start_long">
+        <intent
+            android:action="com.walkbuddy.action.START_SOLO"
+            android:targetPackage="com.walkbuddy"
+            android:targetClass="com.walkbuddy.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="weekly_recap"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_recap"
+        android:shortcutShortLabel="@string/shortcut_recap_short"
+        android:shortcutLongLabel="@string/shortcut_recap_long">
+        <intent
+            android:action="com.walkbuddy.action.RECAP"
+            android:targetPackage="com.walkbuddy"
+            android:targetClass="com.walkbuddy.MainActivity" />
+    </shortcut>
+</shortcuts>

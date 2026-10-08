@@ -25,7 +25,7 @@ class StepRecorder(private val source: StepSource, private val repo: AppReposito
         return mutex.withLock {
             val a = accumulator()
             val d = a.onReading(nowMs, counter)
-            repo.addSteps(Clock.epochDay(nowMs), d.raw, d.verified)
+            repo.addSteps(Clock.epochDay(nowMs), d.raw, d.verified, Clock.hourOfDay(nowMs))
             settings.saveCounterState(counter, nowMs)
             d
         }
@@ -35,7 +35,7 @@ class StepRecorder(private val source: StepSource, private val repo: AppReposito
     suspend fun recordWalkDelta(nowMs: Long, counter: Long, delta: StepDelta) {
         mutex.withLock {
             accumulator().rebase(nowMs, counter)
-            repo.addSteps(Clock.epochDay(nowMs), delta.raw, delta.verified)
+            repo.addSteps(Clock.epochDay(nowMs), delta.raw, delta.verified, Clock.hourOfDay(nowMs))
         }
     }
 

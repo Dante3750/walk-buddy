@@ -11,7 +11,10 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.walkbuddy.domain.BodyProfile
 import com.walkbuddy.domain.Diet
+import com.walkbuddy.domain.QuietHours
 import com.walkbuddy.domain.Sex
+import com.walkbuddy.domain.StepLength
+import com.walkbuddy.domain.UnitSystem
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -42,8 +45,30 @@ data class Settings(
     val pingEnabled: Boolean = false,
     val sittingReminders: Boolean = false,
     val healthConnectOn: Boolean = false,
+    // ---- alpha 1.1 ----
+    val unitSystem: UnitSystem = UnitSystem.Metric,
+    val reduceMotion: Boolean = false,
+    val haptics: Boolean = true,
+    val quietEnabled: Boolean = false,
+    val quietFromHour: Int = 22,
+    val quietToHour: Int = 7,
+    val dynamicColor: Boolean = false,
+    val anniversaryDate: String = "",
+    val anniversaryLabel: String = "",
+    val demoMode: Boolean = false,
+    val celebratedDay: Long = -1,
+    val buddyName: String = "",
+    val buddySteps: Int = 0,
+    val buddyGoal: Int = 0,
+    val buddyDay: Long = -1,
+    val remindersSent: String = "",
+    val recapSeenDay: Long = -1,
 ) {
     val profile: BodyProfile get() = BodyProfile(heightCm, weightKg, sex)
+    val quietHours: QuietHours get() = QuietHours(quietEnabled, quietFromHour, quietToHour)
+
+    /** Calibrated length, else from height, else a typical stride. */
+    val stepLengthM: Double get() = calibratedStepLengthM ?: StepLength.fromHeight(heightCm, sex) ?: StepLength.DEFAULT_M
 }
 
 /** Plain app-private DataStore. Nothing here leaves the device except what the user explicitly shares in a session. */
@@ -69,6 +94,23 @@ class SettingsStore(private val context: Context) {
         val ping = booleanPreferencesKey("ping_enabled")
         val sitting = booleanPreferencesKey("sitting_reminders")
         val hc = booleanPreferencesKey("health_connect")
+        val units = stringPreferencesKey("units")
+        val reduceMotion = booleanPreferencesKey("reduce_motion")
+        val haptics = booleanPreferencesKey("haptics")
+        val quietOn = booleanPreferencesKey("quiet_hours_on")
+        val quietFrom = intPreferencesKey("quiet_from")
+        val quietTo = intPreferencesKey("quiet_to")
+        val dynamic = booleanPreferencesKey("dynamic_color")
+        val annivDate = stringPreferencesKey("anniv_date")
+        val annivLabel = stringPreferencesKey("anniv_label")
+        val demo = booleanPreferencesKey("demo_mode")
+        val celebrated = longPreferencesKey("celebrated_day")
+        val buddyName = stringPreferencesKey("buddy_name")
+        val buddySteps = intPreferencesKey("buddy_steps")
+        val buddyGoal = intPreferencesKey("buddy_goal")
+        val buddyDay = longPreferencesKey("buddy_day")
+        val remindersSent = stringPreferencesKey("reminders_sent")
+        val recapSeen = longPreferencesKey("recap_seen_day")
         // Background step bookkeeping
         val lastCounter = longPreferencesKey("last_counter")
         val lastCounterT = longPreferencesKey("last_counter_t")
@@ -99,6 +141,23 @@ class SettingsStore(private val context: Context) {
             pingEnabled = p[K.ping] ?: false,
             sittingReminders = p[K.sitting] ?: false,
             healthConnectOn = p[K.hc] ?: false,
+            unitSystem = runCatching { UnitSystem.valueOf(p[K.units] ?: "") }.getOrDefault(UnitSystem.Metric),
+            reduceMotion = p[K.reduceMotion] ?: false,
+            haptics = p[K.haptics] ?: true,
+            quietEnabled = p[K.quietOn] ?: false,
+            quietFromHour = (p[K.quietFrom] ?: 22).coerceIn(0, 23),
+            quietToHour = (p[K.quietTo] ?: 7).coerceIn(0, 23),
+            dynamicColor = p[K.dynamic] ?: false,
+            anniversaryDate = p[K.annivDate].orEmpty(),
+            anniversaryLabel = p[K.annivLabel].orEmpty(),
+            demoMode = p[K.demo] ?: false,
+            celebratedDay = p[K.celebrated] ?: -1,
+            buddyName = p[K.buddyName].orEmpty(),
+            buddySteps = p[K.buddySteps] ?: 0,
+            buddyGoal = p[K.buddyGoal] ?: 0,
+            buddyDay = p[K.buddyDay] ?: -1,
+            remindersSent = p[K.remindersSent].orEmpty(),
+            recapSeenDay = p[K.recapSeen] ?: -1,
         )
     }
 
@@ -146,6 +205,34 @@ class SettingsStore(private val context: Context) {
     suspend fun setPing(on: Boolean) = context.settingsDataStore.edit { it[K.ping] = on }.let { }
     suspend fun setSitting(on: Boolean) = context.settingsDataStore.edit { it[K.sitting] = on }.let { }
     suspend fun setHealthConnect(on: Boolean) = context.settingsDataStore.edit { it[K.hc] = on }.let { }
+
+    suspend fun setUnits(u: UnitSystem) = context.settingsDataStore.edit { it[K.units] = u.name }.let { }
+    suspend fun setReduceMotion(on: Boolean) = context.settingsDataStore.edit { it[K.reduceMotion] = on }.let { }
+    suspend fun setHaptics(on: Boolean) = context.settingsDataStore.edit { it[K.haptics] = on }.let { }
+    suspend fun setQuietHours(on: Boolean, from: Int, to: Int) {
+        context.settingsDataStore.edit { it[K.quietOn] = on; it[K.quietFrom] = from.coerceIn(0, 23); it[K.quietTo] = to.coerceIn(0, 23) }
+    }
+    suspend fun setDynamicColor(on: Boolean) = context.settingsDataStore.edit { it[K.dynamic] = on }.let { }
+    suspend fun setAnniversary(isoDate: String, label: String) {
+        context.settingsDataStore.edit { it[K.annivDate] = isoDate.trim().take(10); it[K.annivLabel] = label.trim().take(30) }
+    }
+    suspend fun setDemoMode(on: Boolean) = context.settingsDataStore.edit { it[K.demo] = on }.let { }
+    suspend fun setCelebratedDay(day: Long) = context.settingsDataStore.edit { it[K.celebrated] = day }.let { }
+    suspend fun setRecapSeen(day: Long) = context.settingsDataStore.edit { it[K.recapSeen] = day }.let { }
+
+    /** The buddy's progress as last seen during a walk. Only used to place their avatar on today's ring. */
+    suspend fun saveBuddyDaily(name: String, steps: Int, goal: Int, day: Long) {
+        context.settingsDataStore.edit {
+            it[K.buddyName] = name.take(24); it[K.buddySteps] = steps; it[K.buddyGoal] = goal; it[K.buddyDay] = day
+        }
+    }
+
+    suspend fun rememberReminders(keys: Collection<String>) {
+        context.settingsDataStore.edit {
+            val old = (it[K.remindersSent] ?: "").split('|').filter { k -> k.isNotBlank() }
+            it[K.remindersSent] = (old + keys).takeLast(30).joinToString("|")
+        }
+    }
 
     // ---- background step bookkeeping ----
     suspend fun counterState(): Pair<Long?, Long?> {

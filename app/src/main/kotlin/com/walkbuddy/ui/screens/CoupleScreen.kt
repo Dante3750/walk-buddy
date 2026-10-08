@@ -37,7 +37,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.data.Clock
+import com.walkbuddy.domain.AnniversaryCountdown
 import com.walkbuddy.domain.CalendarIntentSpec
+import com.walkbuddy.domain.Units
+import com.walkbuddy.domain.UnitSystem
+import java.time.LocalDate
 import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.Odometer
 import com.walkbuddy.domain.TogetherStreak
@@ -79,8 +83,16 @@ private fun pickDateTime(context: Context, onPicked: (Long) -> Unit) {
     }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
 }
 
+private fun pickDate(context: Context, onPicked: (LocalDate) -> Unit) {
+    val now = Calendar.getInstance()
+    DatePickerDialog(context, { _, y, m, d -> onPicked(LocalDate.of(y, m + 1, d)) }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
+}
+
 @Composable
 fun CoupleScreen(vm: AppViewModel) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val unit = settings?.unitSystem ?: UnitSystem.Metric
+    var annivLabel by remember(settings?.anniversaryLabel) { mutableStateOf(settings?.anniversaryLabel.orEmpty()) }
     val ctx = LocalContext.current
     val dates by vm.dates.collectAsStateWithLifecycle()
     val spots by vm.spots.collectAsStateWithLifecycle()
@@ -97,7 +109,7 @@ fun CoupleScreen(vm: AppViewModel) {
     val dateFmt = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Us", style = MaterialTheme.typography.titleLarge)
+        Text("Us", style = MaterialTheme.typography.headlineSmall)
         Disclaimer("For two people walking together. No accounts: you simply share a session code when you walk.")
 
         SectionCard("Together streak") {
@@ -108,15 +120,30 @@ fun CoupleScreen(vm: AppViewModel) {
             )
         }
 
+        SectionCard("Our day") {
+            val date = AnniversaryCountdown.parse(settings?.anniversaryDate)
+            if (date == null) {
+                Text("Add an anniversary or a date to look forward to. It stays on this phone, and you get one gentle reminder the day before.", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                AnniversaryCountdown.daysTogether(date, LocalDate.now())?.let { Text("Day ${com.walkbuddy.domain.Hero.thousands(it.toInt())} together", style = MaterialTheme.typography.headlineSmall) }
+                Text(AnniversaryCountdown.info(date, settings?.anniversaryLabel.orEmpty(), LocalDate.now()).text, style = MaterialTheme.typography.titleMedium)
+            }
+            OutlinedTextField(value = annivLabel, onValueChange = { annivLabel = it.take(30) }, label = { Text("What are we counting to?") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { pickDate(ctx) { d -> vm.saveSettings { setAnniversary(d.toString(), annivLabel) } } }) { Text(if (date == null) "Pick the date" else "Change date") }
+                if (date != null) TextButton(onClick = { vm.saveSettings { setAnniversary("", "") } }) { Text("Remove") }
+            }
+        }
+
         SectionCard("Our distance") {
-            Text("%.1f km walked together".format(distance / 1000.0), style = MaterialTheme.typography.headlineMedium)
+            Text(Units.longDistance(distance, unit) + " walked together", style = MaterialTheme.typography.headlineMedium)
             val next = odo.next
             if (next != null) {
                 LinearProgressIndicator(
                     progress = { odo.fractionToNext.toFloat() },
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Progress to ${next.name}" },
                 )
-                Text("Next: ${next.label}, %.1f km to go".format(odo.remainingToNextKm ?: 0.0))
+                Text("Next: ${next.label}, " + Units.longDistance((odo.remainingToNextKm ?: 0.0) * 1000.0, unit) + " to go")
             } else {
                 Text("You have walked past every milestone. Lovely.")
             }

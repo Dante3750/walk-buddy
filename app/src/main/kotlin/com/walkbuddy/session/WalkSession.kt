@@ -12,7 +12,17 @@ import com.walkbuddy.rtc.SignalingClient
 import com.walkbuddy.rtc.SignalingState
 import com.walkbuddy.sensors.LocationSource
 import com.walkbuddy.sensors.StepSource
+import com.walkbuddy.data.Clock
+import com.walkbuddy.data.Goals
+import com.walkbuddy.domain.ActivityState
+import com.walkbuddy.domain.BuddyCard
+import com.walkbuddy.domain.BuddyStatus
 import com.walkbuddy.domain.CoupleMode
+import com.walkbuddy.domain.PaceZone
+import com.walkbuddy.domain.Reaction
+import com.walkbuddy.domain.Reactions
+import com.walkbuddy.domain.RingBuddy
+import com.walkbuddy.domain.TogetherSnapshot
 import com.walkbuddy.domain.DecodeResult
 import com.walkbuddy.domain.FavoriteSpot
 import com.walkbuddy.domain.Highlights
@@ -43,6 +53,9 @@ enum class Phase { Idle, Lobby, Walking, Summary }
 
 data class LobbyPeer(val id: String, val name: String, val connected: Boolean)
 
+/** A warm preset reaction that just arrived from a buddy. [seq] makes repeated identical reactions distinct. */
+data class IncomingReaction(val from: String, val reaction: Reaction, val seq: Int)
+
 data class SessionUi(
     val phase: Phase = Phase.Idle,
     val code: String? = null,
@@ -60,6 +73,11 @@ data class SessionUi(
     val pingEnabled: Boolean = false,
     val showCalories: Boolean = false,
     val solo: Boolean = false,
+    val walkId: Long? = null,
+    /** Buddies at their own daily progress, from their "day" messages (for the dots on the live ring). */
+    val buddyDaily: List<RingBuddy> = emptyList(),
+    val reaction: IncomingReaction? = null,
+    val demo: Boolean = false,
 )
 
 /**
@@ -97,6 +115,12 @@ class WalkSession(
     private var bannerJob: Job? = null
     private val pingOut = PingLimiter()
     private val pingIn = PingLimiter(minGapMs = 30_000, maxPerHour = 12)
+    private val reactionOut = Reactions.senderLimiter()
+    private val reactionIn = Reactions.receiverLimiter()
+    private val peerDaily = HashMap<String, Pair<Int, Int>>()
+    private var reactionSeq = 0
+    private var reactionJob: Job? = null
+    private var lastBuddySaveMs = 0L
 
     // ---------- lobby ----------
 
@@ -197,6 +221,20 @@ class WalkSession(
             }
             return
         }
+        if (msg is PeerMessage.React) {
+            val r = Reaction.fromId(msg.id) ?: return
+            if (reactionIn.tryAcquire(now)) showReaction(names[from] ?: "Your buddy", r)
+            return
+        }
+        if (msg is PeerMessage.Daily) {
+            peerDaily[from] = msg.steps to msg.goal
+            refreshDaily()
+            if (now - lastBuddySaveMs > 30_000) {
+                lastBuddySaveMs = now
+                scope.launch { settingsStore.saveBuddyDaily(names[from] ?: "Buddy", msg.steps, msg.goal, Clock.today()) }
+            }
+            return
+        }
         if (msg is PeerMessage.Spot && engine == null) {
             _ui.update { it.copy(spotOffer = (names[from] ?: "Your buddy") to FavoriteSpot(msg.name, msg.lat, msg.lon)) }
             return
@@ -205,6 +243,28 @@ class WalkSession(
         if (msg is PeerMessage.Bye) connected.remove(from)
         refreshPeers()
     }
+
+    private fun refreshDaily() {
+        val list = peerDaily.map { (id, v) -> RingBuddy(id, names[id] ?: "Buddy", v.first, v.second) }
+        _ui.update { it.copy(buddyDaily = list) }
+    }
+
+    private fun showReaction(from: String, r: Reaction) {
+        Notifications.haptic(app)
+        _ui.update { it.copy(reaction = IncomingReaction(from, r, ++reactionSeq)) }
+        reactionJob?.cancel()
+        reactionJob = scope.launch { delay(4_000); _ui.update { it.copy(reaction = null) } }
+    }
+
+    /** Sends one of the preset reactions. Rate limited; returns false when it was not sent. */
+    fun sendReaction(r: Reaction): Boolean {
+        if (_ui.value.phase != Phase.Walking) return false
+        if (_ui.value.demo) { showReaction("You", r); return true }
+        if (!reactionOut.tryAcquire(System.currentTimeMillis())) return false
+        return (link?.broadcast(MessageCodec.encode(PeerMessage.React(r.id))) ?: 0) > 0
+    }
+
+    fun dismissReaction() = _ui.update { it.copy(reaction = null) }
 
     private fun refreshPeers() {
         val ids = (names.keys + connected).toSet()
@@ -253,6 +313,7 @@ class WalkSession(
             val st = e.tick(now)
             n++
             if (n % 2 == 0) e.selfPosition(now)?.let { link?.broadcast(MessageCodec.encode(it)) }
+            if (n % 10 == 0) broadcastDaily()
             if (n % 30 == 0) steps.persistBaseline()
             _ui.update { it.copy(walk = st) }
             st.nudge?.let { showBanner(it.text, nudge = true) }
@@ -260,9 +321,18 @@ class WalkSession(
         }
     }
 
+    private suspend fun broadcastDaily() {
+        if (link == null) return
+        val day = Clock.today()
+        val history = repo.allDays()
+        val steps = history.firstOrNull { it.epochDay == day }?.verifiedSteps ?: 0
+        val goal = Goals.goalFor(day, history, settings)
+        link?.broadcast(MessageCodec.encode(PeerMessage.Daily(steps.coerceIn(0, 300_000), goal.coerceIn(500, 100_000))))
+    }
+
     private fun showBanner(text: String, nudge: Boolean) {
         Notifications.haptic(app)
-        if (nudge) Notifications.nudge(app, text)
+        if (nudge && !settings.quietHours.isQuiet(Clock.hourOfDay())) Notifications.nudge(app, text)
         _ui.update { it.copy(banner = text) }
         bannerJob?.cancel()
         bannerJob = scope.launch { delay(12_000); _ui.update { it.copy(banner = null) } }
@@ -296,6 +366,7 @@ class WalkSession(
     }
 
     fun endWalk() {
+        if (_ui.value.demo && _ui.value.phase == Phase.Walking) { endDemoWalk(); return }
         val e = engine
         if (_ui.value.phase != Phase.Walking || e == null) { leave(); return }
         scope.launch {
@@ -305,11 +376,11 @@ class WalkSession(
             val summary = e.finish(now)
             steps.persistBaseline()
             teardownNetwork() // sharing ends when the walk ends
-            repo.saveWalk(summary, walkStartMs)
+            val walkId = repo.saveWalk(summary, walkStartMs)
             if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
             val card = Highlights.build(summary, showCalories = settings.caloriesEnabled)
             engine = null
-            _ui.update { it.copy(phase = Phase.Summary, summary = summary, highlights = card, walk = null, signaling = SignalingState.Idle, banner = null, peers = emptyList()) }
+            _ui.update { it.copy(phase = Phase.Summary, summary = summary, highlights = card, walk = null, signaling = SignalingState.Idle, banner = null, peers = emptyList(), walkId = walkId, buddyDaily = emptyList(), reaction = null) }
         }
     }
 
@@ -329,6 +400,52 @@ class WalkSession(
     private fun teardownNetwork() {
         signaling?.close(); signaling = null
         link?.close(); link = null
-        names.clear(); connected.clear()
+        names.clear(); connected.clear(); peerDaily.clear()
+    }
+
+    // ---------- demo walk (no buddy, no permissions, nothing saved) ----------
+
+    /** A scripted walk with a pretend buddy, so the live screen can be explored anywhere. */
+    fun startDemoWalk() {
+        if (_ui.value.phase != Phase.Idle) return
+        val start = System.currentTimeMillis()
+        walkStartMs = start
+        _ui.value = SessionUi(phase = Phase.Walking, coupleMode = true, pingEnabled = true, demo = true, buddyDaily = listOf(RingBuddy("demo", "Sam", 6_120, 8_000)))
+        walkJobs += scope.launch {
+            var k = 0
+            while (true) {
+                delay(1_000)
+                k++
+                val el = System.currentTimeMillis() - start
+                val sec = el / 1000.0
+                val steps = (sec * 1.8).toLong()
+                val gap = 10.0 + 6.0 * Math.sin(sec / 9.0)
+                val buddy = BuddyCard(
+                    id = "demo", name = "Sam", distanceM = gap, alongM = if (gap > 12) 6.0 else -4.0,
+                    relation = "Side by side", zone = PaceZone.Brisk, steps = (steps * 0.97).toInt(), speedMps = 1.28,
+                    status = BuddyStatus.Moving, statusText = "Walking with you", pos = null,
+                )
+                val together = TogetherSnapshot(el, (el * 0.92).toLong(), 92, minOf(el, 240_000L), minOf(el, 240_000L))
+                val st = WalkState(
+                    nowMs = start + el, elapsedMs = el, myDistanceM = sec * 1.3, myVerifiedSteps = steps, myRawSteps = steps + 2,
+                    myCadenceSpm = 108.0, myZone = PaceZone.Brisk, mySpeedMps = 1.3, myActivity = ActivityState.Walking,
+                    buddies = listOf(buddy), together = together, togetherNow = true, nudge = null, paceSuggestion = null,
+                )
+                _ui.update { it.copy(walk = st, buddyDaily = listOf(RingBuddy("demo", "Sam", 6_120 + (steps * 0.97).toInt(), 8_000))) }
+                if (k % 25 == 0) showReaction("Sam", Reaction.values()[(k / 25) % Reaction.values().size])
+            }
+        }
+    }
+
+    private fun endDemoWalk() {
+        walkJobs.forEach { it.cancel() }; walkJobs.clear()
+        val w = _ui.value.walk
+        val el = w?.elapsedMs ?: 60_000L
+        val summary = WalkSummary(
+            durationMs = el, distanceM = w?.myDistanceM ?: 80.0, rawSteps = (w?.myRawSteps ?: 100), verifiedSteps = (w?.myVerifiedSteps ?: 100),
+            avgSpeedMps = 1.3, buddyCount = 1, togetherPct = 92, longestTogetherMs = (el * 0.8).toLong(), moderateMin = (el / 60_000).toInt(),
+            vigorousMin = 0, nudgesShown = 0, calories = null,
+        )
+        _ui.update { it.copy(phase = Phase.Summary, summary = summary, highlights = Highlights.build(summary, false), walk = null, walkId = null, reaction = null) }
     }
 }

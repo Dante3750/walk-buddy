@@ -26,4 +26,9 @@ object CsvExport {
         append("name,lat,lon\r\n")
         for (s in spots) append("${cell(s.name)},${s.lat},${s.lon}\r\n")
     }
+
+    fun moods(moods: List<MoodEntry>): String = buildString {
+        append("epoch_day,at_ms,mood,note\r\n")
+        for (m in moods.sortedBy { it.atMs }) append("${m.epochDay},${m.atMs},${m.mood},${cell(m.note)}\r\n")
+    }
 }

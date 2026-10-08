@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.ui.AppViewModel
 import com.walkbuddy.ui.WalkBuddyApp
 import com.walkbuddy.ui.theme.WalkBuddyTheme
@@ -14,25 +17,51 @@ class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels { AppViewModel.Factory }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The splash stays up only until the saved settings are read, so there is no flash of the wrong screen.
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splash.setKeepOnScreenCondition { viewModel.settings.value == null }
         enableEdgeToEdge()
-        handleLink(intent)
+        handleIntent(intent)
         setContent {
-            WalkBuddyTheme {
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+            WalkBuddyTheme(
+                dynamicColor = settings?.dynamicColor == true,
+                reduceMotion = settings?.reduceMotion == true,
+                haptics = settings?.haptics != false,
+            ) {
                 WalkBuddyApp(viewModel)
             }
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        viewModel.onResume()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleLink(intent)
+        handleIntent(intent)
     }
 
-    /** A walkbuddy://join/CODE link only pre-fills a confirmation dialog; nothing starts until the user taps Join. */
-    private fun handleLink(intent: Intent?) {
-        val data = intent?.data ?: return
-        if (data.scheme == "walkbuddy") viewModel.pendingJoin.value = data.toString()
+    /**
+     * A walkbuddy://join/CODE link only pre-fills a confirmation dialog; nothing starts until the user taps Join.
+     * Shortcuts and the quick settings tile ask for an action, which the home screen carries out.
+     */
+    private fun handleIntent(intent: Intent?) {
+        intent ?: return
+        val data = intent.data
+        if (data != null && data.scheme == "walkbuddy") viewModel.pendingJoin.value = data.toString()
+        when (intent.action) {
+            ACTION_START_SOLO -> viewModel.pendingAction.value = "start_solo"
+            ACTION_RECAP -> viewModel.pendingAction.value = "recap"
+        }
+    }
+
+    companion object {
+        const val ACTION_START_SOLO = "com.walkbuddy.action.START_SOLO"
+        const val ACTION_RECAP = "com.walkbuddy.action.RECAP"
     }
 }

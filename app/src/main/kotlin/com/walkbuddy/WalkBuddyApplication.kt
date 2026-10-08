@@ -15,6 +15,7 @@ import com.walkbuddy.session.WalkSession
 
 /** Hand-rolled dependency container (same approach as the template project): small enough that DI would only add build risk. */
 class AppContainer(context: Context) {
+    val appContext: Context = context.applicationContext
     val settings = SettingsStore(context)
     private val database = AppDatabase.create(context)
     val repository = AppRepository(database, settings)

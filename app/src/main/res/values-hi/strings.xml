@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">वॉक बडी</string>
+
+    <string name="tab_today">आज</string>
+    <string name="tab_trends">रुझान</string>
+    <string name="tab_fuel">ऊर्जा</string>
+    <string name="tab_us">हम</string>
+    <string name="tab_settings">सेटिंग्स</string>
+    <string name="back">वापस</string>
+
+    <string name="shortcut_start_short">सैर शुरू करें</string>
+    <string name="shortcut_start_long">अभी अकेले सैर शुरू करें</string>
+    <string name="shortcut_recap_short">साप्ताहिक झलक</string>
+    <string name="shortcut_recap_long">अपना हफ़्ता कहानी की तरह देखें</string>
+
+    <string name="tile_label">सैर</string>
+    <string name="tile_start">शुरू करने के लिए टैप करें</string>
+    <string name="tile_stop">खत्म करने के लिए टैप करें</string>
+
+    <string name="widget_label">आज के कदम</string>
+    <string name="widget_description">होम स्क्रीन पर आपके कदम और लक्ष्य की रिंग।</string>
+
+    <string name="notif_title">वॉक बडी</string>
+    <string name="notif_end_walk">सैर खत्म करें</string>
+    <string name="share_chooser">साझा करें</string>
+    <string name="share_card_description">आपका आँकड़ा कार्ड</string>
+</resources>
