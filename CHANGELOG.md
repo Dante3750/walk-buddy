@@ -1,5 +1,16 @@
 # Changelog
 
+## alpha 1.3 (1.3.0-alpha)
+
+- Two modes on the home screen: **Walk with partner** (couple mode, unchanged) and **Open group walk** (up to about 50 people).
+- Open groups: create with host controls (optional approval, kick, end for everyone, step goal, meeting point, time limit); join by QR, invite link or 6-character code, including mid-walk; roster snapshot for late joiners; nickname; reconnect keeps your place.
+- Server: group rooms relay small validated location and step updates over WebSocket; rate limits, TTL, no persistence, no location storage, no public directory. Pair signaling is unchanged.
+- Domain: together score and nudges for N members (robust centroid, stragglers, leader and sweeper, collective step goal with no ranking), optional location blur (about 100 m or 500 m grid), group invite link and QR payload encode/decode.
+- Map shared by both modes: offline canvas with trails, follow me / whole group, meeting-point flag, scale bar; opt-in OpenStreetMap tiles with attribution; opt-in local GPX route saving with share and delete.
+- QR scanning with CameraX and ZXing (no Play Services); camera permission only on the scan screen, with paste-link and enter-code fallbacks.
+- CI no longer pushes a `ci-screenshots` branch; screenshots are a workflow artifact only.
+- Tests: domain 205 to 284, server 21 to 49.
+
 ## alpha 1.2 (1.2.0-alpha)
 
 - UI redesign: giant centred tabular step hero, thicker gradient ring with seamless sweep and glow, single card style and radius scale, 48dp touch targets, stats strip, tonal secondary buttons.
