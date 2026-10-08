@@ -72,7 +72,7 @@ enum class FixVerdict { Accepted, LowAccuracy, OutOfOrder, ImpossibleSpeed, Inva
  * If many consecutive fixes are rejected for speed we re-anchor (the last accepted fix was probably the wrong one).
  */
 class FixFilter(
-    private val maxAccuracyM: Double = 30.0,
+    val maxAccuracyM: Double = 30.0,
     private val maxSpeedMps: Double = 12.0,
     private val reanchorAfter: Int = 4,
 ) {

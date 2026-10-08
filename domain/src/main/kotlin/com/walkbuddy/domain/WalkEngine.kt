@@ -23,7 +23,20 @@ data class BuddyCard(
     val status: BuddyStatus,
     val statusText: String,
     val pos: LatLon?,
+    /** Where they were when we last heard from them. Kept after the link drops so the map and the Track can show a faded last-known place. */
+    val lastPos: LatLon? = null,
+    val lastDistanceM: Double? = null,
+    val lastAlongM: Double? = null,
+    /** Seconds since the last message (any path); null before the first. */
+    val lastHeardAgoSec: Int? = null,
+    /** How far they have walked this walk (their own odometer), when they said. */
+    val walkedM: Double? = null,
+    /** Their chosen avatar code (see [AvatarCode]); null for an older app. */
+    val avatar: Int? = null,
 )
+
+/** How well the phone knows where I am. */
+enum class LocationQuality { None, Weak, Good }
 
 data class WalkState(
     val nowMs: Long,
@@ -42,6 +55,9 @@ data class WalkState(
     val paceSuggestion: PaceSuggestion?,
     /** My latest accepted position, for the map. */
     val myPos: LatLon? = null,
+    /** Accuracy radius of that position, when the phone said. */
+    val myAccuracyM: Double? = null,
+    val locationQuality: LocationQuality = LocationQuality.None,
 )
 
 /**
@@ -62,6 +78,8 @@ class WalkEngine(
         var speedMps: Double? = null
         var steps = 0
         var cadence: Double? = null
+        var walkedM: Double? = null
+        var avatar: Int? = null
         val pace = RollingPace()
     }
 
@@ -87,8 +105,26 @@ class WalkEngine(
 
     val peerIds: List<String> get() = peers.keys.toList()
 
-    /** My latest accepted position (exact, never blurred); null until the first good fix. */
-    val myPosition: LatLon? get() = distance.lastAccepted?.pos
+    /**
+     * A usable but weak fix (up to [DISPLAY_MAX_ACCURACY_M]): enough to show on the map and to share, never used for distance.
+     * Without it, an "approximate location" grant, an indoor start or a cold GPS shows nothing at all until a 30 m fix arrives.
+     */
+    private var weakFix: Fix? = null
+
+    /** The best position we have: the latest good fix, or a newer weak one when the good ones stopped coming (GPS lost). */
+    private val bestFix: Fix?
+        get() {
+            val good = distance.lastAccepted
+            val weak = weakFix
+            return when {
+                good == null -> weak
+                weak != null && weak.tMs - good.tMs > WEAK_TAKES_OVER_MS -> weak
+                else -> good
+            }
+        }
+
+    /** My latest position (exact, never blurred); null until the first fix of any quality. */
+    val myPosition: LatLon? get() = bestFix?.pos
 
     /** Apply new settings mid-walk (radius, quiet mode, pace-sync...). Counters keep their history. */
     fun updateConfig(c: WalkConfig) {
@@ -105,6 +141,9 @@ class WalkEngine(
             heading.update(fix.pos)
             pace.add(fix.tMs, distance.totalM)
             lastFixSpeed = fix.speedMps ?: pace.speedMps()
+        } else if (v == FixVerdict.LowAccuracy && fix.pos.isValid && (fix.accuracyM ?: 0.0) <= DISPLAY_MAX_ACCURACY_M) {
+            val w = weakFix
+            if (w == null || fix.tMs >= w.tMs) weakFix = fix
         }
         return v
     }
@@ -127,14 +166,15 @@ class WalkEngine(
         p.lastHeardMs = nowMs
         if (msg !is PeerMessage.Bye) p.left = false
         when (msg) {
-            is PeerMessage.Hello -> p.name = msg.name
+            is PeerMessage.Hello -> { p.name = msg.name; p.avatar = msg.avatar ?: p.avatar }
             is PeerMessage.Position -> {
-                if ((msg.accuracyM ?: 0.0) <= 60.0) {
+                if ((msg.accuracyM ?: 0.0) <= DISPLAY_MAX_ACCURACY_M) {
                     p.pos = LatLon(msg.lat, msg.lon)
                     p.accuracyM = msg.accuracyM
                 }
                 p.steps = msg.steps
                 p.cadence = msg.cadenceSpm
+                if (msg.distanceM != null) p.walkedM = msg.distanceM
                 if (msg.distanceM != null) {
                     p.pace.add(msg.tMs, msg.distanceM)
                     p.speedMps = p.pace.speedMps() ?: msg.speedMps
@@ -155,7 +195,7 @@ class WalkEngine(
 
     /** My current broadcast. Null until the first accepted fix. */
     fun selfPosition(nowMs: Long): PeerMessage.Position? {
-        val f = distance.lastAccepted ?: return null
+        val f = bestFix ?: return null
         val t = steps.totals()
         return PeerMessage.Position(
             tMs = nowMs, lat = f.lat, lon = f.lon, accuracyM = f.accuracyM, speedMps = pace.speedMps() ?: lastFixSpeed,
@@ -168,7 +208,8 @@ class WalkEngine(
         lastTickMs = nowMs
         val cad = cadence.spm()
         active.add(cad, dtSec)
-        val me = distance.lastAccepted?.pos
+        val fixNow = bestFix
+        val me = fixNow?.pos
         val head = heading.headingDeg
         val mySpeed = pace.speedMps()
 
@@ -177,10 +218,17 @@ class WalkEngine(
             val pos = if (status == BuddyStatus.ConnectionLost) null else p.pos
             val d = if (me != null && pos != null) Geo.haversine(me, pos) else null
             val along = if (me != null && pos != null && head != null) Geo.alongTrackM(me, head, pos) else null
+            // The last known place stays available (faded on the map and the Track) so a quiet link never makes your buddy vanish.
+            val last = if (p.left) null else p.pos
+            val lastD = if (me != null && last != null) Geo.haversine(me, last) else null
+            val lastAlong = if (me != null && last != null && head != null) Geo.alongTrackM(me, head, last) else null
             BuddyCard(
                 id = id, name = p.name, distanceM = d, alongM = along, relation = relationText(d, along),
                 zone = PaceZone.fromCadence(p.cadence), steps = p.steps, speedMps = p.speedMps, status = status,
                 statusText = LinkHealth.copy(p.name, status), pos = pos,
+                lastPos = last, lastDistanceM = lastD, lastAlongM = lastAlong,
+                lastHeardAgoSec = p.lastHeardMs?.let { ((nowMs - it) / 1000L).toInt().coerceAtLeast(0) },
+                walkedM = p.walkedM, avatar = p.avatar,
             )
         }
 
@@ -217,7 +265,7 @@ class WalkEngine(
             nowMs = nowMs, elapsedMs = nowMs - startMs, myDistanceM = distance.totalM, myVerifiedSteps = t.verified, myRawSteps = t.raw,
             myCadenceSpm = cad, myZone = PaceZone.fromCadence(cad), mySpeedMps = mySpeed, myActivity = activity, buddies = cards,
             together = together.snapshot(), togetherNow = togetherNow, nudge = nudge, paceSuggestion = suggestion,
-            myPos = me,
+            myPos = me, myAccuracyM = fixNow?.accuracyM, locationQuality = qualityOf(fixNow),
         )
     }
 
@@ -237,7 +285,18 @@ class WalkEngine(
         )
     }
 
+    /** Accuracy only: with a minimum-distance filter a standing-still walker gets no new fixes, so fix age says nothing about quality. */
+    private fun qualityOf(f: Fix?): LocationQuality = when {
+        f == null -> LocationQuality.None
+        (f.accuracyM ?: 0.0) > FixFilter().maxAccuracyM -> LocationQuality.Weak
+        else -> LocationQuality.Good
+    }
+
     companion object {
+        /** Fixes up to this radius are shown and shared; distance still needs [FixFilter]'s stricter accuracy. */
+        const val DISPLAY_MAX_ACCURACY_M = 250.0
+        private const val WEAK_TAKES_OVER_MS = 15_000L
+
         fun relationText(distanceM: Double?, alongM: Double?): String = when {
             distanceM == null -> "Location not shared yet"
             distanceM <= 15 -> "Right beside you"

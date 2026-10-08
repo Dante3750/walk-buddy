@@ -24,6 +24,13 @@ data class GroupMemberCard(
     val statusText: String,
     val straggler: Boolean,
     val role: GroupRole?,
+    /** Last known place, kept after the link goes quiet (faded on the map and the Track). */
+    val lastPos: LatLon? = null,
+    val lastDistanceM: Double? = null,
+    val lastAlongM: Double? = null,
+    val lastHeardAgoSec: Int? = null,
+    val walkedM: Double? = null,
+    val avatar: Int? = null,
 )
 
 data class GroupState(
@@ -52,6 +59,8 @@ data class GroupState(
     val nudge: Nudge?,
     val goal: CollectiveProgress,
     val trails: Map<String, List<LatLon>>,
+    val myAccuracyM: Double? = null,
+    val locationQuality: LocationQuality = LocationQuality.None,
 )
 
 /**
@@ -73,6 +82,8 @@ class GroupEngine(
         var pos: LatLon? = null
         var speedMps: Double? = null
         var steps = 0
+        var walkedM: Double? = null
+        var avatar: Int? = null
     }
 
     var config: GroupWalkConfig = config
@@ -115,13 +126,14 @@ class GroupEngine(
             val p = peerFor(e.peerId) ?: continue
             p.name = e.name
             p.left = false
+            if (e.avatar != null) p.avatar = e.avatar
         }
         for ((id, p) in peers) if (id !in ids) { p.left = true; p.pos = null }
     }
 
-    fun onMemberJoined(id: String, name: String) {
+    fun onMemberJoined(id: String, name: String, avatar: Int? = null) {
         if (id == selfId) return
-        peerFor(id)?.let { it.name = name; it.left = false }
+        peerFor(id)?.let { it.name = name; it.left = false; if (avatar != null) it.avatar = avatar }
     }
 
     fun onMemberLeft(id: String) {
@@ -141,12 +153,13 @@ class GroupEngine(
         p.lastHeardMs = nowMs
         p.left = false
         val pos = u.pos
-        if (pos != null && (u.accuracyM ?: 0.0) <= 60.0) {
+        if (pos != null && (u.accuracyM ?: 0.0) <= WalkEngine.DISPLAY_MAX_ACCURACY_M) {
             p.pos = pos
             trails.add(id, pos)
         } else if (pos == null) p.pos = null
         p.speedMps = u.speedMps
         p.steps = u.steps
+        if (u.distanceM != null) p.walkedM = u.distanceM
         collective.record(id, u.steps.toLong())
     }
 
@@ -197,10 +210,16 @@ class GroupEngine(
             val d = if (me != null && pos != null) Geo.haversine(me, pos) else null
             val along = if (me != null && pos != null && head != null) Geo.alongTrackM(me, head, pos) else null
             val view = analysis.views[id]
+            val last = p.pos
             GroupMemberCard(
                 id = id, name = p.name, pos = pos, distanceM = d, alongM = along, relation = WalkEngine.relationText(d, along),
                 steps = p.steps, speedMps = p.speedMps, status = s, statusText = LinkHealth.copy(p.name, s),
                 straggler = view?.straggler == true, role = view?.role,
+                lastPos = last,
+                lastDistanceM = if (me != null && last != null) Geo.haversine(me, last) else null,
+                lastAlongM = if (me != null && last != null && head != null) Geo.alongTrackM(me, head, last) else null,
+                lastHeardAgoSec = p.lastHeardMs?.let { ((nowMs - it) / 1000L).toInt().coerceAtLeast(0) },
+                walkedM = p.walkedM, avatar = p.avatar,
             )
         }
         val myView = analysis.views[selfId]
@@ -212,6 +231,7 @@ class GroupEngine(
             leaderId = analysis.leaderId, sweeperId = analysis.sweeperId, stragglerCount = analysis.stragglers.size,
             together = cohesion.snapshot(), togetherNow = if (known) analysis.together else null, nudge = nudge,
             goal = collective.progress(config.goalSteps), trails = trails.snapshot(),
+            myAccuracyM = st.myAccuracyM, locationQuality = st.locationQuality,
         )
     }
 

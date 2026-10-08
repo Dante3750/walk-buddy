@@ -265,10 +265,14 @@ object SlippyTiles {
 enum class MapFollow { Free, Me, Group }
 
 object MapCamera {
+    const val FOLLOW_MIN_ZOOM = 14.0
+    const val FOLLOW_ZOOM = 17.0
+
     /** The camera for [mode], or null when the user is panning freely (leave the camera alone). */
     fun target(mode: MapFollow, me: LatLon?, others: List<LatLon>, pin: LatLon?, vp: MapViewport): MapViewport? = when (mode) {
         MapFollow.Free -> null
-        MapFollow.Me -> me?.let { vp.copy(center = it) }
+        // A fresh map starts zoomed out on the whole world; "follow me" must come in to street level, not just recentre on a blank sea.
+        MapFollow.Me -> me?.let { vp.copy(center = it, zoom = if (vp.zoom < FOLLOW_MIN_ZOOM) FOLLOW_ZOOM else vp.zoom) }
         MapFollow.Group -> {
             val all = buildList { me?.let(::add); addAll(others); pin?.let(::add) }
             if (all.isEmpty()) null else MapViewport.fit(all, vp.widthPx, vp.heightPx)

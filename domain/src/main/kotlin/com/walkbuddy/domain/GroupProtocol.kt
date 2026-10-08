@@ -10,7 +10,7 @@ import kotlinx.serialization.json.put
 /** Room settings the host controls. [goalSteps] 0 means "no collective goal". */
 data class GroupSettings(val approval: Boolean = false, val goalSteps: Int = 0, val title: String = "", val max: Int = 50)
 
-data class RosterEntry(val peerId: String, val name: String, val host: Boolean)
+data class RosterEntry(val peerId: String, val name: String, val host: Boolean, val avatar: Int? = null)
 
 /** One small update relayed by the server. lat/lon are null for a member who is not sharing location. */
 data class GroupUpdate(
@@ -34,10 +34,10 @@ data class GroupUpdate(
 sealed class GroupClientMessage {
     data class Create(
         val peerId: String, val key: String, val name: String,
-        val approval: Boolean = false, val ttlMin: Int = 240, val goalSteps: Int = 0, val title: String = "",
+        val approval: Boolean = false, val ttlMin: Int = 240, val goalSteps: Int = 0, val title: String = "", val avatar: Int? = null,
     ) : GroupClientMessage()
 
-    data class Join(val code: String, val peerId: String, val key: String, val name: String) : GroupClientMessage()
+    data class Join(val code: String, val peerId: String, val key: String, val name: String, val avatar: Int? = null) : GroupClientMessage()
     data class Update(val update: GroupUpdate) : GroupClientMessage()
     object Leave : GroupClientMessage()
     data class Approve(val peerId: String) : GroupClientMessage()
@@ -56,7 +56,7 @@ sealed class GroupServerMessage {
         val roster: List<RosterEntry>, val settings: GroupSettings, val expiresInSec: Int,
     ) : GroupServerMessage()
 
-    data class MemberJoined(val peerId: String, val name: String, val host: Boolean) : GroupServerMessage()
+    data class MemberJoined(val peerId: String, val name: String, val host: Boolean, val avatar: Int? = null) : GroupServerMessage()
     data class MemberLeft(val peerId: String, val reason: String) : GroupServerMessage()
     data class Upd(val from: String, val update: GroupUpdate) : GroupServerMessage()
     data class SettingsChanged(val settings: GroupSettings) : GroupServerMessage()
@@ -84,8 +84,12 @@ object GroupCodec {
             is GroupClientMessage.Create -> {
                 put("t", "group-create"); put("peer", m.peerId); put("key", m.key); put("name", m.name)
                 put("approval", m.approval); put("ttlMin", m.ttlMin); put("goalSteps", m.goalSteps); put("title", m.title)
+                m.avatar?.let { put("av", it) }
             }
-            is GroupClientMessage.Join -> { put("t", "group-join"); put("code", m.code); put("peer", m.peerId); put("key", m.key); put("name", m.name) }
+            is GroupClientMessage.Join -> {
+                put("t", "group-join"); put("code", m.code); put("peer", m.peerId); put("key", m.key); put("name", m.name)
+                m.avatar?.let { put("av", it) }
+            }
             is GroupClientMessage.Update -> {
                 put("t", "upd")
                 put("d", buildJsonObject {
@@ -124,7 +128,7 @@ object GroupCodec {
                 val roster = (o.elem("roster") as? JsonArray)?.mapNotNull { e ->
                     val r = e as? JsonObject ?: return@mapNotNull null
                     val id = r.str("peer") ?: return@mapNotNull null
-                    RosterEntry(id, MessageCodec.cleanName(r.str("name"), MessageCodec.MAX_NAME) ?: "Walker", r.str("host") == "true")
+                    RosterEntry(id, MessageCodec.cleanName(r.str("name"), MessageCodec.MAX_NAME) ?: "Walker", r.str("host") == "true", r.int("av")?.takeIf { it in 0..AvatarCode.MAX })
                 }.orEmpty().take(200)
                 GroupServerMessage.Joined(
                     code = SessionCode.normalize(o.str("code")) ?: return null,
@@ -137,6 +141,7 @@ object GroupCodec {
             }
             "member-joined" -> GroupServerMessage.MemberJoined(
                 o.str("peer") ?: return null, MessageCodec.cleanName(o.str("name"), MessageCodec.MAX_NAME) ?: "Walker", o.str("host") == "true",
+                o.int("av")?.takeIf { it in 0..AvatarCode.MAX },
             )
             "member-left" -> GroupServerMessage.MemberLeft(o.str("peer") ?: return null, o.str("reason")?.take(16) ?: "left")
             "upd" -> {

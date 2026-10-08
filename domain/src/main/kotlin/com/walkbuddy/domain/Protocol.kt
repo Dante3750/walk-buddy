@@ -51,7 +51,8 @@ object JoinLink {
 sealed class PeerMessage {
     abstract val type: String
 
-    data class Hello(val peerId: String, val name: String) : PeerMessage() { override val type get() = "hello" }
+    /** [avatar] is the sender's chosen look (see [AvatarCode]); older apps send none. */
+    data class Hello(val peerId: String, val name: String, val avatar: Int? = null) : PeerMessage() { override val type get() = "hello" }
 
     data class Position(
         val tMs: Long,
@@ -108,7 +109,7 @@ object MessageCodec {
             put("v", VERSION)
             put("t", m.type)
             when (m) {
-                is PeerMessage.Hello -> { put("id", m.peerId); put("name", m.name) }
+                is PeerMessage.Hello -> { put("id", m.peerId); put("name", m.name); m.avatar?.let { put("av", it) } }
                 is PeerMessage.Position -> {
                     put("ts", m.tMs); put("lat", m.lat); put("lon", m.lon)
                     m.accuracyM?.let { put("acc", it) }
@@ -145,7 +146,7 @@ object MessageCodec {
         return when (t) {
             "hello" -> {
                 val id = cleanId(o.str("id")) ?: return DecodeResult.Rejected("bad id")
-                DecodeResult.Ok(PeerMessage.Hello(id, cleanName(o.str("name"), MAX_NAME) ?: "Buddy"))
+                DecodeResult.Ok(PeerMessage.Hello(id, cleanName(o.str("name"), MAX_NAME) ?: "Buddy", o.int("av")?.takeIf { it in 0..AvatarCode.MAX }))
             }
             "pos" -> {
                 val lat = o.dbl("lat"); val lon = o.dbl("lon")
@@ -215,13 +216,18 @@ internal fun JsonObject.elem(key: String): JsonElement? = this[key]
  * Client <-> signaling-server protocol (see server/README.md). The server only relays offer/answer/ice.
  */
 sealed class SignalingMessage {
-    data class Join(val code: String, val peerId: String) : SignalingMessage()
+    /** [key] is a random per-session secret that lets the same phone take its slot back at once after a network change. */
+    data class Join(val code: String, val peerId: String, val key: String? = null) : SignalingMessage()
     data class Joined(val you: String, val peers: List<String>) : SignalingMessage()
     data class PeerJoined(val peerId: String) : SignalingMessage()
     data class PeerLeft(val peerId: String) : SignalingMessage()
     /** kind is "offer", "answer" or "ice"; payload is an opaque string (SDP or candidate JSON). */
     data class Relay(val kind: String, val from: String?, val to: String, val payload: String) : SignalingMessage()
     data class Error(val code: String) : SignalingMessage()
+    /** Phone to server: a partner message for the fallback relay. [to] null = everyone else in the room. */
+    data class PairSend(val data: String, val to: String? = null) : SignalingMessage()
+    /** Server to phone: a partner message that came over the fallback relay. */
+    data class PairData(val from: String?, val data: String) : SignalingMessage()
 }
 
 object SignalingCodec {
@@ -231,7 +237,7 @@ object SignalingCodec {
 
     fun encode(m: SignalingMessage): String = buildJsonObject {
         when (m) {
-            is SignalingMessage.Join -> { put("t", "join"); put("code", m.code); put("peer", m.peerId) }
+            is SignalingMessage.Join -> { put("t", "join"); put("code", m.code); put("peer", m.peerId); m.key?.let { put("key", it) } }
             is SignalingMessage.Joined -> {
                 put("t", "joined"); put("you", m.you)
                 put("peers", kotlinx.serialization.json.JsonArray(m.peers.map { JsonPrimitive(it) }))
@@ -242,6 +248,8 @@ object SignalingCodec {
                 put("t", m.kind); m.from?.let { put("from", it) }; put("to", m.to); put("data", m.payload)
             }
             is SignalingMessage.Error -> { put("t", "error"); put("code", m.code) }
+            is SignalingMessage.PairSend -> { put("t", "pdata"); put("data", m.data); m.to?.let { put("to", it) } }
+            is SignalingMessage.PairData -> { put("t", "pdata"); m.from?.let { put("from", it) }; put("data", m.data) }
         }
     }.toString()
 
@@ -251,7 +259,7 @@ object SignalingCodec {
         return when (val t = o.str("t")) {
             "join" -> {
                 val code = SessionCode.normalize(o.str("code")) ?: return null
-                SignalingMessage.Join(code, o.str("peer") ?: return null)
+                SignalingMessage.Join(code, o.str("peer") ?: return null, o.str("key"))
             }
             "joined" -> {
                 val peers = (o.elem("peers") as? kotlinx.serialization.json.JsonArray)
@@ -266,6 +274,11 @@ object SignalingCodec {
                 SignalingMessage.Relay(t, o.str("from"), o.str("to") ?: return null, data)
             }
             "error" -> SignalingMessage.Error(o.str("code") ?: "unknown")
+            "pdata" -> {
+                val data = o.str("data") ?: return null
+                if (data.length > MessageCodec.MAX_CHARS) return null
+                SignalingMessage.PairData(o.str("from"), data)
+            }
             else -> null
         }
     }
