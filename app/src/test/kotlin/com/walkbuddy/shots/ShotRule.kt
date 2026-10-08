@@ -22,10 +22,11 @@ fun newPaparazzi() = Paparazzi(
     deviceConfig = DeviceConfig.PIXEL_5,
     theme = "android:Theme.Material.Light.NoActionBar",
     showSystemUi = false,
-    snapshotHandler = PngHandler(),
+    // Full device resolution: Paparazzi otherwise shrinks every image to 1000 px, too small to judge type and spacing.
+    useDeviceResolution = true,
 )
 
-/** One screenshot of [content] inside the real app theme. [heightPx] lets long scrolling screens render in full. */
+/** One screenshot of [content] inside the real app theme. The PNG is named after the test method. [heightPx] lets long scrolling screens render in full. */
 fun Paparazzi.shot(name: String, look: Look, heightPx: Int = 2340, content: @Composable () -> Unit) {
     unsafeUpdateConfig(
         DeviceConfig.PIXEL_5.copy(
@@ -34,7 +35,7 @@ fun Paparazzi.shot(name: String, look: Look, heightPx: Int = 2340, content: @Com
             screenHeight = heightPx,
         ),
     )
-    snapshot(name = name + "_" + look.key) {
+    snapshot {
         WalkBuddyTheme(darkTheme = look.dark, reduceMotion = true) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() }
         }

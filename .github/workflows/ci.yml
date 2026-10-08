@@ -132,7 +132,7 @@ jobs:
       - name: Render screenshots (Paparazzi)
         run: |
           set -o pipefail
-          gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee shots.log
+          gradle :app:recordPaparazziDebug --stacktrace 2>&1 | tee shots.log
 
       - name: Summarize failures
         if: always()
@@ -142,7 +142,10 @@ jobs:
         if: always()
         run: |
           mkdir -p out
-          cp app/build/shots/*.png out/ 2>/dev/null || true
+          for f in app/src/test/snapshots/images/*.png; do
+            [ -f "$f" ] || continue
+            cp "$f" "out/$(basename "$f" | sed -E 's/^.*Test_//')"
+          done
           ls -la out
 
       - name: Upload screenshots
