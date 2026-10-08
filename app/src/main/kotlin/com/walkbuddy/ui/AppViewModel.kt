@@ -59,6 +59,8 @@ import com.walkbuddy.domain.WeeklyReport
 import com.walkbuddy.notify.Notifications
 import com.walkbuddy.notify.WidgetBridge
 import com.walkbuddy.rtc.SignalingClient
+import com.walkbuddy.session.CreateGroupOptions
+import com.walkbuddy.session.GroupUi
 import com.walkbuddy.session.SessionUi
 import com.walkbuddy.session.WalkService
 import java.time.LocalDate
@@ -133,6 +135,7 @@ data class UsUi(val unit: UnitSystem, val coupleDistanceM: Double, val buddyName
 class AppViewModel(private val c: AppContainer, private val appContext: android.content.Context) : ViewModel() {
     val settings: StateFlow<Settings?> = c.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val session: StateFlow<SessionUi> = c.session.ui
+    val group: StateFlow<GroupUi> = c.groupSession.ui
     val spots: StateFlow<List<SpotRow>> = c.repository.spots.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val dates: StateFlow<List<WalkDate>> = c.repository.dates.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -377,6 +380,44 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         WalkService.start(appContext)
     }
 
+    // ---- partner map ----
+    fun setPin(pos: com.walkbuddy.domain.LatLon) = c.session.setPin(pos)
+    fun clearPin() = c.session.clearPin()
+
+    // ---- open groups ----
+    fun createGroup(opts: CreateGroupOptions) {
+        saveSettings { setName(opts.nickname); setGroupPrecision(opts.precision); if (opts.serverUrl.isNotBlank()) setServer(opts.serverUrl) }
+        c.groupSession.create(opts)
+        WalkService.start(appContext)
+    }
+
+    fun joinGroup(codeOrLink: String, nickname: String, serverOverride: String?, precision: com.walkbuddy.domain.LocationPrecision) {
+        saveSettings { setName(nickname); setGroupPrecision(precision) }
+        c.groupSession.join(codeOrLink, nickname, serverOverride, precision)
+        WalkService.start(appContext)
+    }
+
+    fun startDemoGroup() = c.groupSession.startDemo()
+    fun groupEnd(closeForEveryone: Boolean) = c.groupSession.endWalk(closeForEveryone)
+    fun groupCancel() = c.groupSession.cancel()
+    fun groupFinish() = c.groupSession.finishSummary()
+    fun groupDismissBanner() = c.groupSession.dismissBanner()
+    fun groupSharing(on: Boolean) = c.groupSession.setSharing(on)
+    fun groupQuiet(on: Boolean) = c.groupSession.setQuiet(on)
+    fun groupSweeper(on: Boolean) = c.groupSession.setSweeper(on)
+    fun groupApprove(id: String) = c.groupSession.approve(id)
+    fun groupDeny(id: String) = c.groupSession.deny(id)
+    fun groupKick(id: String) = c.groupSession.kick(id)
+    fun groupApprovalRequired(on: Boolean) = c.groupSession.setApproval(on)
+    fun groupGoal(steps: Int) = c.groupSession.setGoal(steps)
+    fun groupSetPin(pos: com.walkbuddy.domain.LatLon, label: String = "") = c.groupSession.setPin(pos, label)
+    fun groupClearPin() = c.groupSession.clearPin()
+
+    // ---- saved routes (opt-in) ----
+    fun routes(): List<com.walkbuddy.data.RouteInfo> = c.routes.list()
+    fun deleteRoute(name: String) { c.routes.delete(name) }
+    fun routeFile(name: String): java.io.File? = c.routes.file(name)
+
     fun startDemoWalk() = c.session.startDemoWalk()
     fun startWalking() = c.session.startWalking()
     fun endWalk() = c.session.endWalk()
@@ -457,6 +498,8 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     fun deleteEverything(done: () -> Unit) {
         viewModelScope.launch {
             c.session.leave()
+            c.groupSession.cancel()
+            c.routes.deleteAll()
             c.repository.deleteAll()
             c.steps.invalidate()
             done()

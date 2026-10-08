@@ -41,6 +41,7 @@ import com.walkbuddy.data.GoalMode
 import com.walkbuddy.data.Settings
 import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.Diet
+import com.walkbuddy.domain.LocationPrecision
 import com.walkbuddy.domain.ProfileCheck
 import com.walkbuddy.domain.Sex
 import com.walkbuddy.domain.UnitSystem
@@ -69,6 +70,9 @@ class SettingsActions(
     val healthAvailable: ((Boolean) -> Unit) -> Unit = {},
     val onExport: () -> Unit = {},
     val deleteEverything: (() -> Unit) -> Unit = {},
+    val routes: () -> List<com.walkbuddy.data.RouteInfo> = { emptyList() },
+    val onShareRoute: (String) -> Unit = {},
+    val onDeleteRoute: (String) -> Unit = {},
 )
 
 @Composable
@@ -93,6 +97,19 @@ fun SettingsScreen(vm: AppViewModel) {
         healthAvailable = { done -> vm.healthAvailable(done) },
         onExport = { export.launch("walk-buddy-export.csv") },
         deleteEverything = { done -> vm.deleteEverything(done) },
+        routes = { vm.routes() },
+        onShareRoute = { name ->
+            val f = vm.routeFile(name)
+            if (f != null) {
+                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", f)
+                val send = Intent(Intent.ACTION_SEND).setType("application/gpx+xml").putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                try { ctx.startActivity(Intent.createChooser(send, "Share route")) } catch (_: ActivityNotFoundException) {
+                    Toast.makeText(ctx, "No app to share with", Toast.LENGTH_SHORT).show()
+                }
+            }
+        },
+        onDeleteRoute = { vm.deleteRoute(it) },
     )
     SettingsContent(settings, actions)
 }
@@ -111,6 +128,7 @@ fun SettingsContent(s: Settings?, a: SettingsActions) {
         StepLengthSection(a, s)
         QuietHoursSection(a, s)
         WalkSection(a, s)
+        MapSection(a, s)
         ServerSection(a, s)
         ExtrasSection(a, s)
         HealthSection(a, s)
@@ -120,7 +138,7 @@ fun SettingsContent(s: Settings?, a: SettingsActions) {
             Text(Copy.WELLNESS)
             Text(Copy.SHARE_LOCATION)
             Text(Copy.LOCAL_ONLY)
-            Disclaimer("Walk Buddy has no accounts, no analytics, no ads, and never uses the microphone or camera.")
+            Disclaimer("Walk Buddy has no accounts, no analytics, no ads, and never uses the microphone. The camera is used only on the QR scan screen, and nothing it sees is saved.")
         }
     }
 }
@@ -388,5 +406,40 @@ private fun QuietHoursSection(a: SettingsActions, s: Settings) {
 private fun DemoSection(a: SettingsActions, s: Settings) {
     SectionCard("Demo mode") {
         ToggleRow("Show demo data", "Sample steps, badges and a pretend buddy named Sam. Works with no permissions and saves nothing. Your real data is untouched.", s.demoMode) { on -> a.setDemoMode(on) }
+    }
+}
+
+@Composable
+private fun MapSection(a: SettingsActions, s: Settings) {
+    var routes by remember { mutableStateOf(a.routes()) }
+    LaunchedEffect(s.saveRoutes) { routes = a.routes() }
+    SectionCard("Maps and groups") {
+        Text("Group walks: how precisely my location is shared", style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LocationPrecision.values().forEach { p ->
+                FilterChip(selected = s.groupPrecision == p, onClick = { a.save { setGroupPrecision(p) } }, label = { Text(p.label) }, modifier = Modifier.heightIn(min = 48.dp))
+            }
+        }
+        Disclaimer("A coarser setting snaps your position to a grid, so the group sees roughly where you are. You always see yourself exactly. You can change it again when you join.")
+        ToggleRow(
+            "Show street map tiles", "Off by default. The map works without them, drawing only the walkers and their trails.", s.mapTiles,
+        ) { a.save { setMapTiles(it) } }
+        Disclaimer("With tiles on, this phone fetches map pictures from OpenStreetMap for the area you are viewing, which tells that service roughly where you are looking. Map data (c) OpenStreetMap contributors.")
+        ToggleRow(
+            "Save my route after a walk", "Keeps your own track on this phone as a GPX file. Never anybody else's.", s.saveRoutes,
+        ) { a.save { setSaveRoutes(it) } }
+        if (routes.isNotEmpty()) {
+            Text("Saved routes", style = MaterialTheme.typography.titleMedium)
+            routes.forEach { r ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(r.label, Modifier.weight(1f))
+                    TextButton(onClick = { a.onShareRoute(r.fileName) }, Modifier.heightIn(min = 48.dp)) { Text("Share") }
+                    TextButton(onClick = { a.onDeleteRoute(r.fileName); routes = a.routes() }, Modifier.heightIn(min = 48.dp)) { Text("Delete") }
+                }
+            }
+            TextButton(onClick = { routes.forEach { a.onDeleteRoute(it.fileName) }; routes = a.routes() }, Modifier.heightIn(min = 48.dp)) { Text("Delete all saved routes") }
+        } else {
+            Disclaimer("No saved routes.")
+        }
     }
 }

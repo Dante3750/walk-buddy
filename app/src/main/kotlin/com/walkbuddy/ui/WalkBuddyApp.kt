@@ -41,13 +41,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.walkbuddy.R
 import com.walkbuddy.ui.components.NavItem
 import com.walkbuddy.ui.components.TabGlyph
 import com.walkbuddy.ui.components.WbBottomBar
 import com.walkbuddy.ui.components.WbRail
 import com.walkbuddy.notify.PeriodicSampler
+import com.walkbuddy.session.GroupPhase
 import com.walkbuddy.session.Phase
+import com.walkbuddy.ui.screens.GroupCreateScreen
+import com.walkbuddy.ui.screens.GroupFlow
+import com.walkbuddy.ui.screens.GroupJoinScreen
+import com.walkbuddy.ui.screens.ScanScreen
 import com.walkbuddy.ui.screens.BadgesScreen
 import com.walkbuddy.ui.screens.CoupleScreen
 import com.walkbuddy.ui.screens.FuelScreen
@@ -67,6 +73,9 @@ import kotlinx.serialization.Serializable
 @Serializable data object SettingsRoute
 @Serializable data object BadgesRoute
 @Serializable data object RecapRoute
+@Serializable data object GroupCreateRoute
+@Serializable data class GroupJoinRoute(val initial: String = "")
+@Serializable data object ScanRoute
 
 private class Tab(val route: Any, val label: Int, val glyph: TabGlyph)
 
@@ -82,6 +91,7 @@ private val tabs = listOf(
 fun WalkBuddyApp(vm: AppViewModel) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
+    val group by vm.group.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val s = settings
 
@@ -100,6 +110,9 @@ fun WalkBuddyApp(vm: AppViewModel) {
                     },
                 )
             }
+        }
+        group.phase != GroupPhase.Idle -> {
+            Scaffold { pad -> Box(Modifier.padding(pad)) { GroupFlow(vm, group) } }
         }
         session.phase != Phase.Idle -> {
             BackHandler(enabled = true) { if (session.phase == Phase.Lobby) vm.leaveLobby() }
@@ -144,7 +157,33 @@ private fun MainScaffold(vm: AppViewModel) {
 
     val content: @Composable (Modifier) -> Unit = { mod ->
         NavHost(nav, startDestination = HomeRoute, modifier = mod) {
-            composable<HomeRoute> { HomeScreen(vm, wide = width != WidthClass.Compact) }
+            composable<HomeRoute> {
+                HomeScreen(
+                    vm, wide = width != WidthClass.Compact,
+                    onScan = { nav.navigate(ScanRoute) },
+                    onCreateGroup = { nav.navigate(GroupCreateRoute) },
+                    onJoinGroup = { nav.navigate(GroupJoinRoute()) },
+                )
+            }
+            composable<GroupCreateRoute> {
+                LeaveWhenGroupStarts(vm) { nav.popBackStack(HomeRoute, false) }
+                GroupCreateScreen(vm, onBack = { nav.popBackStack() })
+            }
+            composable<GroupJoinRoute> { e ->
+                LeaveWhenGroupStarts(vm) { nav.popBackStack(HomeRoute, false) }
+                GroupJoinScreen(
+                    vm, initial = e.toRoute<GroupJoinRoute>().initial,
+                    onScan = { nav.navigate(ScanRoute) { launchSingleTop = true } },
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable<ScanRoute> {
+                ScanScreen(
+                    onInvite = { text -> nav.popBackStack(HomeRoute, false); vm.pendingJoin.value = text },
+                    onTypeInstead = { nav.popBackStack(); nav.navigate(GroupJoinRoute()) { launchSingleTop = true } },
+                    onBack = { nav.popBackStack() },
+                )
+            }
             composable<TrendsRoute> {
                 TrendsScreen(vm, onBadges = { nav.navigate(BadgesRoute) }, onRecap = { nav.navigate(RecapRoute) })
             }
@@ -172,4 +211,11 @@ private fun MainScaffold(vm: AppViewModel) {
             }
         }
     }
+}
+
+/** The setup screens are replaced by the live group screens; drop them from the back stack so Back never returns to them. */
+@Composable
+private fun LeaveWhenGroupStarts(vm: AppViewModel, leave: () -> Unit) {
+    val group by vm.group.collectAsStateWithLifecycle()
+    LaunchedEffect(group.phase) { if (group.phase != GroupPhase.Idle) leave() }
 }

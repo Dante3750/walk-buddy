@@ -1,0 +1,566 @@
+package com.walkbuddy.session
+
+import android.content.Context
+import com.walkbuddy.data.AppRepository
+import com.walkbuddy.data.Clock
+import com.walkbuddy.data.RouteStore
+import com.walkbuddy.data.Settings
+import com.walkbuddy.data.SettingsStore
+import com.walkbuddy.data.StepRecorder
+import com.walkbuddy.domain.GroupClientMessage
+import com.walkbuddy.domain.GroupConfig
+import com.walkbuddy.domain.GroupCopy
+import com.walkbuddy.domain.GroupEngine
+import com.walkbuddy.domain.GroupKey
+import com.walkbuddy.domain.GroupLink
+import com.walkbuddy.domain.GroupServerMessage
+import com.walkbuddy.domain.GroupSettings
+import com.walkbuddy.domain.GroupState
+import com.walkbuddy.domain.GroupUpdate
+import com.walkbuddy.domain.GroupWalkConfig
+import com.walkbuddy.domain.Highlights
+import com.walkbuddy.domain.HighlightsCard
+import com.walkbuddy.domain.Invite
+import com.walkbuddy.domain.Invites
+import com.walkbuddy.domain.LatLon
+import com.walkbuddy.domain.LocationPrecision
+import com.walkbuddy.domain.MeetingPin
+import com.walkbuddy.domain.NudgeConfig
+import com.walkbuddy.domain.RosterEntry
+import com.walkbuddy.domain.RouteRecorder
+import com.walkbuddy.domain.SessionCode
+import com.walkbuddy.domain.Fix
+import com.walkbuddy.domain.WalkConfig
+import com.walkbuddy.domain.WalkSummary
+import com.walkbuddy.health.HealthBridge
+import com.walkbuddy.notify.Notifications
+import com.walkbuddy.rtc.GroupClient
+import com.walkbuddy.rtc.SignalingState
+import com.walkbuddy.sensors.LocationSource
+import com.walkbuddy.sensors.StepSource
+import java.security.SecureRandom
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.asKotlinRandom
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+enum class GroupPhase { Idle, Active, Summary }
+
+data class JoinRequestUi(val id: String, val name: String)
+
+/** What the host chooses when creating a group. */
+data class CreateGroupOptions(
+    val nickname: String,
+    val title: String = "",
+    val approval: Boolean = false,
+    val ttlMin: Int = 240,
+    val goalSteps: Int = 0,
+    val precision: LocationPrecision = LocationPrecision.Exact,
+    val serverUrl: String = "",
+)
+
+data class GroupUi(
+    val phase: GroupPhase = GroupPhase.Idle,
+    val demo: Boolean = false,
+    val iAmHost: Boolean = false,
+    val code: String? = null,
+    val inviteLink: String? = null,
+    val webLink: String? = null,
+    val serverUrl: String? = null,
+    val connection: SignalingState = SignalingState.Idle,
+    /** True once the server has put me in the group (not while waiting for approval or connecting). */
+    val joined: Boolean = false,
+    val waitingForApproval: Boolean = false,
+    val note: String? = null,
+    val requests: List<JoinRequestUi> = emptyList(),
+    val settings: GroupSettings = GroupSettings(),
+    val expiresAtMs: Long? = null,
+    val hostAway: Boolean = false,
+    val walk: GroupState? = null,
+    val roster: List<RosterEntry> = emptyList(),
+    val pin: MeetingPin? = null,
+    val sharing: Boolean = true,
+    val precision: LocationPrecision = LocationPrecision.Exact,
+    val quiet: Boolean = false,
+    val iAmSweeper: Boolean = false,
+    val banner: String? = null,
+    val summary: WalkSummary? = null,
+    val highlights: HighlightsCard? = null,
+    val endedReason: String? = null,
+    val groupSteps: Long = 0,
+    val walkId: Long? = null,
+)
+
+/**
+ * An open group walk (many people). Unlike [WalkSession] (two private phones, WebRTC), the group talks to the server, which
+ * relays small updates to everyone; see server/README.md. Tracking starts as soon as the server lets me in, so a late joiner
+ * is simply a member whose first update arrives mid-walk. Location goes only to the group (blurred if the user chose so) and
+ * ends when the walk ends. The server stores nothing.
+ */
+class GroupSession(
+    private val app: Context,
+    private val repo: AppRepository,
+    private val settingsStore: SettingsStore,
+    private val steps: StepRecorder,
+    private val stepSource: StepSource,
+    private val locationSource: LocationSource,
+    private val health: HealthBridge,
+    private val routes: RouteStore,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _ui = MutableStateFlow(GroupUi())
+    val ui: StateFlow<GroupUi> = _ui.asStateFlow()
+
+    val active: Boolean get() = _ui.value.phase == GroupPhase.Active
+
+    private var settings = Settings()
+    private var selfId = ""
+    private var key = ""
+    private var nickname = "Walker"
+    private var client: GroupClient? = null
+    private var serverUrl: String? = null
+    private var code: String? = null
+    private var createOptions: CreateGroupOptions? = null
+    private var engine: GroupEngine? = null
+    private var walkStartMs = 0L
+    private var reconnects = 0
+    private var ending = false
+    private var precision = LocationPrecision.Exact
+    private val walkJobs = mutableListOf<Job>()
+    private var bannerJob: Job? = null
+    private var goalCelebrated = false
+    private var route: RouteRecorder? = null
+    private var sweeperSelf = false
+    private val requests = LinkedHashMap<String, String>()
+
+    // ---------- create / join ----------
+
+    fun create(opts: CreateGroupOptions) {
+        if (_ui.value.phase != GroupPhase.Idle) return
+        _ui.value = GroupUi(phase = GroupPhase.Active, iAmHost = true) // active right away, before settings are read
+        scope.launch {
+            begin(opts.nickname, opts.serverUrl, opts.precision)
+            createOptions = opts
+            code = null
+            _ui.update { it.copy(iAmHost = true, settings = GroupSettings(opts.approval, opts.goalSteps, opts.title.trim().take(40))) }
+            connect()
+        }
+    }
+
+    /** [codeOrLink] is a group link (QR or pasted) or a bare 6-character code. */
+    fun join(codeOrLink: String, nicknameIn: String, serverOverride: String?, precisionIn: LocationPrecision) {
+        if (_ui.value.phase != GroupPhase.Idle) return
+        val invite = Invites.parse(codeOrLink) as? Invite.Group
+        val c = invite?.code ?: SessionCode.normalize(codeOrLink)
+        if (c == null) { _ui.value = GroupUi(phase = GroupPhase.Summary, endedReason = GroupCopy.error("bad_code")); return }
+        _ui.value = GroupUi(phase = GroupPhase.Active, code = c)
+        scope.launch {
+            begin(nicknameIn, serverOverride?.takeIf { it.isNotBlank() } ?: invite?.serverUrl.orEmpty(), precisionIn)
+            code = c
+            createOptions = null
+            _ui.update { it.copy(code = c) }
+            connect()
+        }
+    }
+
+    private suspend fun begin(nick: String, serverHint: String, prec: LocationPrecision) {
+        settings = settingsStore.current()
+        selfId = settingsStore.ensurePeerId()
+        key = GroupKey.generate(SecureRandom().asKotlinRandom())
+        nickname = nick.trim().ifBlank { settings.displayName.ifBlank { "Walker" } }.take(24)
+        precision = prec
+        serverUrl = serverHint.trim().ifBlank { settings.serverUrl.trim() }.takeIf { it.isNotBlank() }
+        reconnects = 0; ending = false; goalCelebrated = false; sweeperSelf = false
+        requests.clear()
+        engine = null
+        route = if (settings.saveRoutes) RouteRecorder() else null
+        _ui.value = GroupUi(
+            phase = GroupPhase.Active, serverUrl = serverUrl, precision = prec, quiet = settings.quietByDefault,
+            note = if (serverUrl == null) "Add a server address to start or join a group." else null,
+        )
+        if (serverUrl == null) {
+            _ui.update { it.copy(connection = SignalingState.Failed) }
+        }
+    }
+
+    private fun connect() {
+        val url = serverUrl ?: return
+        client?.close()
+        client = GroupClient(
+            handleMessage = { m -> scope.launch { onMessage(m) } },
+            handleState = { s, msg -> scope.launch { onConnection(s, msg) } },
+        ).also { it.connect(url) }
+    }
+
+    private fun onConnection(s: SignalingState, msg: String?) {
+        if (ending || _ui.value.phase != GroupPhase.Active) return
+        _ui.update { it.copy(connection = s, note = if (s == SignalingState.Failed) (msg ?: "Connection problem") else if (s == SignalingState.Connected) null else it.note) }
+        when (s) {
+            SignalingState.Connected -> {
+                reconnects = 0
+                val c = code
+                val opts = createOptions
+                if (c == null && opts != null) {
+                    client?.send(
+                        GroupClientMessage.Create(
+                            peerId = selfId, key = key, name = nickname, approval = opts.approval, ttlMin = opts.ttlMin,
+                            goalSteps = opts.goalSteps, title = opts.title.trim().take(40),
+                        ),
+                    )
+                } else if (c != null) {
+                    client?.send(GroupClientMessage.Join(c, selfId, key, nickname))
+                }
+            }
+            SignalingState.Failed -> if (reconnects < 8) {
+                reconnects++
+                scope.launch {
+                    delay(2_000L * reconnects)
+                    if (!ending && active && _ui.value.connection == SignalingState.Failed) connect()
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    // ---------- messages from the server ----------
+
+    private fun onMessage(m: GroupServerMessage) {
+        if (ending) return
+        val now = System.currentTimeMillis()
+        when (m) {
+            is GroupServerMessage.Joined -> onJoined(m, now)
+            is GroupServerMessage.Pending -> _ui.update { it.copy(waitingForApproval = true) }
+            is GroupServerMessage.MemberJoined -> {
+                engine?.onMemberJoined(m.peerId, m.name)
+                _ui.update { u -> u.copy(roster = (u.roster.filter { it.peerId != m.peerId } + RosterEntry(m.peerId, m.name, m.host))) }
+                // Help the newcomer see me quickly, and let them see the meeting point.
+                sendUpdateNow()
+                val pin = _ui.value.pin
+                if (_ui.value.iAmHost && pin != null) client?.send(GroupClientMessage.Pin(pin.pos.lat, pin.pos.lon, pin.label))
+            }
+            is GroupServerMessage.MemberLeft -> {
+                engine?.onMemberLeft(m.peerId)
+                _ui.update { u -> u.copy(roster = u.roster.filter { it.peerId != m.peerId }) }
+            }
+            is GroupServerMessage.Upd -> engine?.onUpdate(now, m.from, m.update)
+            is GroupServerMessage.SettingsChanged -> {
+                _ui.update { it.copy(settings = m.settings) }
+                engine?.let { e -> e.updateConfig(e.config.copy(goalSteps = m.settings.goalSteps)) }
+            }
+            is GroupServerMessage.PinSet -> {
+                _ui.update { it.copy(pin = MeetingPin(LatLon(m.lat, m.lon), m.label)) }
+                showBanner(if (m.label.isBlank()) "The host set a meeting point on the map." else "Meeting point: ${m.label}", nudge = false)
+            }
+            GroupServerMessage.PinCleared -> _ui.update { it.copy(pin = null) }
+            is GroupServerMessage.JoinRequest -> {
+                requests[m.peerId] = m.name
+                publishRequests()
+                if (_ui.value.iAmHost) showBanner("${m.name} would like to join", nudge = false)
+            }
+            is GroupServerMessage.JoinCancelled -> { requests.remove(m.peerId); publishRequests() }
+            GroupServerMessage.HostAway -> _ui.update { it.copy(hostAway = true) }
+            GroupServerMessage.HostBack -> _ui.update { it.copy(hostAway = false) }
+            GroupServerMessage.Denied -> finish(GroupCopy.DENIED)
+            GroupServerMessage.Kicked -> finish(GroupCopy.KICKED)
+            GroupServerMessage.RoomClosed -> finish(GroupCopy.ROOM_CLOSED)
+            GroupServerMessage.RoomExpired -> finish(GroupCopy.ROOM_EXPIRED)
+            is GroupServerMessage.Error -> onServerError(m.code)
+        }
+    }
+
+    private fun onServerError(c: String) {
+        val fatalBeforeJoin = !_ui.value.joined && c in setOf(
+            "no_such_room", "room_full", "wrong_mode", "removed", "id_taken", "too_many_joins", "too_many_rooms", "bad_code", "server_busy", "too_many_pending",
+        )
+        if (fatalBeforeJoin) { finish(GroupCopy.error(c)); return }
+        if (c == "bad_update" || c == "not_host") return
+        _ui.update { it.copy(note = GroupCopy.error(c)) }
+    }
+
+    private fun onJoined(m: GroupServerMessage.Joined, now: Long) {
+        code = m.code
+        val server = serverUrl
+        _ui.update {
+            it.copy(
+                joined = true, waitingForApproval = false, code = m.code, iAmHost = m.host == selfId,
+                inviteLink = GroupLink.build(m.code, server), webLink = server?.let { s -> GroupLink.webLink(m.code, s) },
+                settings = m.settings, roster = m.roster, expiresAtMs = now + m.expiresInSec * 1000L, hostAway = false,
+                connection = SignalingState.Connected, note = null,
+            )
+        }
+        if (engine == null) startTracking(now, m.settings) else engine?.let { e -> e.updateConfig(e.config.copy(goalSteps = m.settings.goalSteps)) }
+        engine?.setRoster(m.roster)
+        sendUpdateNow()
+    }
+
+    private fun publishRequests() = _ui.update { u -> u.copy(requests = requests.map { JoinRequestUi(it.key, it.value) }) }
+
+    // ---------- tracking ----------
+
+    private fun walkConfig(goal: Int) = GroupWalkConfig(
+        walk = WalkConfig(
+            nudge = NudgeConfig(farM = 150.0, nearM = 90.0, quiet = _ui.value.quiet),
+            profile = settings.profile, caloriesEnabled = settings.caloriesEnabled, stepLengthOverrideM = settings.calibratedStepLengthM,
+        ),
+        group = GroupConfig(slackM = precision.maxErrorM, sweeperId = if (sweeperSelf) selfId else null),
+        precision = precision, goalSteps = goal,
+    )
+
+    private fun startTracking(now: Long, gs: GroupSettings) {
+        walkStartMs = now
+        val e = GroupEngine(selfId, nickname, walkConfig(gs.goalSteps), now)
+        engine = e
+        scope.launch { steps.recordIdle(now) }
+        walkJobs += scope.launch {
+            locationSource.fixes().collect { fix ->
+                e.onSelfFix(fix)
+                route?.add(System.currentTimeMillis(), fix.pos, fix.accuracyM)
+            }
+        }
+        walkJobs += scope.launch {
+            stepSource.readings().collect { counter ->
+                val t = System.currentTimeMillis()
+                val d = e.onSelfSteps(t, counter)
+                steps.recordWalkDelta(t, counter, d)
+            }
+        }
+        walkJobs += scope.launch { tickLoop(e) }
+    }
+
+    private suspend fun tickLoop(e: GroupEngine) {
+        var n = 0
+        while (true) {
+            delay(1_000)
+            val now = System.currentTimeMillis()
+            val st = e.tick(now)
+            n++
+            if (n % 3 == 0) sendUpdateNow()
+            if (n % 30 == 0) steps.persistBaseline()
+            _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps) }
+            st.nudge?.let { showBanner(it.text, nudge = true) }
+            if (st.goal.reached && !goalCelebrated && st.goal.goal > 0) {
+                goalCelebrated = true
+                showBanner(com.walkbuddy.domain.CollectiveSteps.message(st.goal), nudge = false)
+            }
+        }
+    }
+
+    private fun sendUpdateNow() {
+        val e = engine ?: return
+        val c = client ?: return
+        if (!_ui.value.joined) return
+        val now = System.currentTimeMillis()
+        val u = e.selfUpdate(now)
+        // "Pause sharing" keeps my steps in the group total but sends no position at all.
+        val out = if (_ui.value.sharing) u else GroupUpdate(now, null, null, steps = u.steps)
+        c.send(GroupClientMessage.Update(out))
+    }
+
+    private fun showBanner(text: String, nudge: Boolean) {
+        Notifications.haptic(app)
+        if (nudge && !settings.quietHours.isQuiet(Clock.hourOfDay())) Notifications.nudge(app, text)
+        _ui.update { it.copy(banner = text) }
+        bannerJob?.cancel()
+        bannerJob = scope.launch { delay(12_000); _ui.update { it.copy(banner = null) } }
+    }
+
+    fun dismissBanner() = _ui.update { it.copy(banner = null) }
+
+    // ---------- my controls ----------
+
+    fun setSharing(on: Boolean) {
+        _ui.update { it.copy(sharing = on) }
+        sendUpdateNow()
+    }
+
+    fun setQuiet(on: Boolean) {
+        _ui.update { it.copy(quiet = on) }
+        val e = engine ?: return
+        e.updateConfig(e.config.copy(walk = e.config.walk.copy(nudge = e.config.walk.nudge.copy(quiet = on))))
+    }
+
+    /** Local choice: "I am walking at the back on purpose", so I do not get catch-up hints. */
+    fun setSweeper(on: Boolean) {
+        sweeperSelf = on
+        _ui.update { it.copy(iAmSweeper = on) }
+        val e = engine ?: return
+        e.updateConfig(e.config.copy(group = e.config.group.copy(sweeperId = if (on) selfId else null)))
+    }
+
+    // ---------- host controls ----------
+
+    fun approve(id: String) { client?.send(GroupClientMessage.Approve(id)); requests.remove(id); publishRequests() }
+    fun deny(id: String) { client?.send(GroupClientMessage.Deny(id)); requests.remove(id); publishRequests() }
+    fun kick(id: String) { client?.send(GroupClientMessage.Kick(id)) }
+    fun setApproval(on: Boolean) { client?.send(GroupClientMessage.ChangeSettings(approval = on)) }
+    fun setGoal(steps: Int) { client?.send(GroupClientMessage.ChangeSettings(goalSteps = steps.coerceIn(0, 10_000_000))) }
+
+    fun setPin(pos: LatLon, label: String) {
+        if (!_ui.value.iAmHost) return
+        val pin = MeetingPin(pos, label.trim().take(40))
+        _ui.update { it.copy(pin = pin) }
+        client?.send(GroupClientMessage.Pin(pos.lat, pos.lon, pin.label))
+    }
+
+    fun clearPin() {
+        if (!_ui.value.iAmHost) return
+        _ui.update { it.copy(pin = null) }
+        client?.send(GroupClientMessage.Unpin)
+    }
+
+    // ---------- ending ----------
+
+    /**
+     * Ends my walk and shows the summary. A host can also close the room for everyone ([closeForEveryone]); if they do not,
+     * the group carries on and the host can return to it for a while.
+     */
+    fun endWalk(closeForEveryone: Boolean = false) {
+        if (_ui.value.demo) { endDemo(); return }
+        if (closeForEveryone && _ui.value.iAmHost) client?.send(GroupClientMessage.CloseRoom)
+        finish(null, leaveRoom = !closeForEveryone)
+    }
+
+    /** Leave before anything happened (waiting screen, errors). Nothing is saved. */
+    fun cancel() {
+        if (_ui.value.demo) { stopDemo(); return }
+        ending = true
+        walkJobs.forEach { it.cancel() }; walkJobs.clear()
+        client?.send(GroupClientMessage.Leave)
+        teardown()
+        _ui.value = GroupUi()
+    }
+
+    private fun finish(reason: String?, leaveRoom: Boolean = true) {
+        if (ending) return
+        ending = true
+        val e = engine
+        val wasJoined = _ui.value.joined
+        if (leaveRoom && wasJoined) client?.send(GroupClientMessage.Leave)
+        walkJobs.forEach { it.cancel() }; walkJobs.clear()
+        teardown()
+        if (e == null) {
+            _ui.value = GroupUi(phase = GroupPhase.Summary, endedReason = reason)
+            return
+        }
+        scope.launch {
+            val now = System.currentTimeMillis()
+            val summary = e.finish(now)
+            val groupSteps = _ui.value.groupSteps
+            steps.persistBaseline()
+            var walkId: Long? = null
+            if (summary.durationMs >= 20_000) {
+                // Saved like a solo walk, so a group never counts as a couple walk in "Our week" or the couple odometer.
+                walkId = repo.saveWalk(summary.copy(buddyCount = 0, togetherPct = null, longestTogetherMs = 0), walkStartMs)
+                if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
+            }
+            route?.let { r -> if (settings.saveRoutes) routes.save(walkStartMs, r.points) }
+            val card = Highlights.build(summary, showCalories = settings.caloriesEnabled)
+            engine = null
+            _ui.value = GroupUi(
+                phase = GroupPhase.Summary, summary = summary, highlights = card, endedReason = reason, groupSteps = groupSteps, walkId = walkId,
+                precision = precision,
+            )
+        }
+    }
+
+    fun finishSummary() { _ui.value = GroupUi() }
+
+    private fun teardown() {
+        client?.close(); client = null
+        requests.clear()
+        route = null
+    }
+
+    // ---------- demo group (no server, no permissions, nothing saved) ----------
+
+    /** A scripted walk with eight pretend walkers, a late joiner, a straggler and someone leaving, to explore the screens anywhere. */
+    fun startDemo() {
+        if (_ui.value.phase != GroupPhase.Idle) return
+        val start = System.currentTimeMillis()
+        walkStartMs = start
+        selfId = "me"; nickname = "You"; ending = false; goalCelebrated = false; sweeperSelf = false
+        val origin = LatLon(12.9716, 77.5946)
+        val goal = 20_000
+        val e = GroupEngine("me", "You", GroupWalkConfig(goalSteps = goal), start)
+        engine = e
+        e.setRoster(listOf(RosterEntry("me", "You", true)))
+        val names = listOf("Asha", "Ben", "Chitra", "Dev", "Esha", "Farid", "Gita", "Hari")
+        val pinPos = metres(origin, 380.0, 0.0)
+        _ui.value = GroupUi(
+            phase = GroupPhase.Active, demo = true, iAmHost = true, joined = true, code = "DEMO42", connection = SignalingState.Connected,
+            settings = GroupSettings(false, goal, "Demo group walk"), pin = MeetingPin(pinPos, "Chai stop"),
+            roster = listOf(RosterEntry("me", "You", true)), expiresAtMs = start + 2 * 3600_000L,
+        )
+        walkJobs += scope.launch {
+            var sec = 0
+            while (true) {
+                delay(1_000)
+                sec++
+                val now = start + sec * 1000L
+                val me = trackPoint(origin, sec * 1.35)
+                e.onSelfFix(Fix(now, me.lat, me.lon, 5.0, 1.35))
+                e.onSelfSteps(now, sec * 2L)
+                for ((i, name) in names.withIndex()) {
+                    val joinAt = if (i == 7) 40 else 1 // Hari joins mid-walk
+                    if (sec < joinAt) continue
+                    if (sec == joinAt) {
+                        e.onMemberJoined("d$i", name)
+                        _ui.update { u -> u.copy(roster = u.roster + RosterEntry("d$i", name, false)) }
+                    }
+                    if (i == 5 && sec > 150) { if (sec == 151) e.onMemberLeft("d$i"); continue } // Farid heads home
+                    var along = (i - 3) * 7.0 + sin(sec / 11.0 + i) * 9.0
+                    // Dev drifts back for a while, then catches up.
+                    if (i == 3) along -= when { sec < 60 -> 0.0; sec < 130 -> (sec - 60) * 3.2; sec < 170 -> 224.0 - (sec - 130) * 5.5; else -> 4.0 }
+                    val lateral = ((i % 3) - 1) * 6.0
+                    val p = trackPoint(origin, sec * 1.35 + along, lateral)
+                    e.onUpdate(now, "d$i", GroupUpdate(now, p.lat, p.lon, 6.0, 1.3, (sec * 1.9 + i * 11).toInt(), 108.0, sec * 1.3))
+                }
+                val st = e.tick(now)
+                _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps) }
+                st.nudge?.let { n -> _ui.update { u -> u.copy(banner = n.text) } }
+                if (sec % 25 == 0) _ui.update { it.copy(banner = null) }
+            }
+        }
+    }
+
+    private fun endDemo() {
+        val e = engine
+        walkJobs.forEach { it.cancel() }; walkJobs.clear()
+        val now = System.currentTimeMillis()
+        val summary = e?.finish(now)
+        val card = summary?.let { Highlights.build(it, false) }
+        val total = _ui.value.groupSteps
+        engine = null
+        ending = true
+        _ui.value = GroupUi(phase = GroupPhase.Summary, demo = true, summary = summary, highlights = card, groupSteps = total)
+    }
+
+    private fun stopDemo() {
+        walkJobs.forEach { it.cancel() }; walkJobs.clear()
+        engine = null
+        _ui.value = GroupUi()
+    }
+
+    /** A point [s] metres along a gentle route (north, then east) and [lateral] metres to its right. */
+    private fun trackPoint(o: LatLon, s: Double, lateral: Double = 0.0): LatLon {
+        val leg = 420.0
+        if (s <= leg) return metres(o, s, lateral)
+        return metres(metres(o, leg, 0.0), -lateral, s - leg)
+    }
+
+    /** Offsets [north] and [east] metres from a point (flat-earth, fine for a few hundred metres). */
+    private fun metres(o: LatLon, north: Double, east: Double): LatLon {
+        val dLat = north / 111_195.0
+        val dLon = east / (111_195.0 * cos(Math.toRadians(o.lat)))
+        return LatLon(o.lat + dLat, o.lon + dLon)
+    }
+}

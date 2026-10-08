@@ -2,6 +2,7 @@ package com.walkbuddy.session
 
 import android.content.Context
 import com.walkbuddy.data.AppRepository
+import com.walkbuddy.data.RouteStore
 import com.walkbuddy.data.Settings
 import com.walkbuddy.data.SettingsStore
 import com.walkbuddy.data.StepRecorder
@@ -28,6 +29,10 @@ import com.walkbuddy.domain.FavoriteSpot
 import com.walkbuddy.domain.Highlights
 import com.walkbuddy.domain.HighlightsCard
 import com.walkbuddy.domain.JoinLink
+import com.walkbuddy.domain.LatLon
+import com.walkbuddy.domain.MeetingPin
+import com.walkbuddy.domain.RouteRecorder
+import com.walkbuddy.domain.TrailBook
 import com.walkbuddy.domain.MessageCodec
 import com.walkbuddy.domain.NudgeConfig
 import com.walkbuddy.domain.PeerMessage
@@ -78,6 +83,10 @@ data class SessionUi(
     val buddyDaily: List<RingBuddy> = emptyList(),
     val reaction: IncomingReaction? = null,
     val demo: Boolean = false,
+    /** Recent paths for the map, by person id (mine is keyed "me"). */
+    val trails: Map<String, List<LatLon>> = emptyMap(),
+    /** A meeting point either partner has set on the map. */
+    val pin: MeetingPin? = null,
 )
 
 /**
@@ -93,6 +102,7 @@ class WalkSession(
     private val stepSource: StepSource,
     private val locationSource: LocationSource,
     private val health: HealthBridge,
+    private val routes: RouteStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _ui = MutableStateFlow(SessionUi())
@@ -121,12 +131,16 @@ class WalkSession(
     private var reactionSeq = 0
     private var reactionJob: Job? = null
     private var lastBuddySaveMs = 0L
+    private val trailBook = TrailBook()
+    private var route: RouteRecorder? = null
 
     // ---------- lobby ----------
 
     /** [rawCodeOrLink] null = create a new session. Blank server and no code = solo walk. */
     fun openLobby(rawCodeOrLink: String?, serverOverride: String?, solo: Boolean = false) {
         if (sessionActive) return
+        // Mark the session active right away (before the settings are read) so the foreground service never sees "idle" first.
+        _ui.value = SessionUi(phase = Phase.Lobby, solo = solo)
         scope.launch {
             settings = settingsStore.current()
             selfId = settingsStore.ensurePeerId()
@@ -235,6 +249,12 @@ class WalkSession(
             }
             return
         }
+        if (msg is PeerMessage.Pin) {
+            _ui.update { it.copy(pin = MeetingPin(LatLon(msg.lat, msg.lon), msg.label)) }
+            showBanner("${names[from] ?: "Your buddy"} set a meeting point on the map", nudge = false)
+            return
+        }
+        if (msg is PeerMessage.Unpin) { _ui.update { it.copy(pin = null) }; return }
         if (msg is PeerMessage.Spot && engine == null) {
             _ui.update { it.copy(spotOffer = (names[from] ?: "Your buddy") to FavoriteSpot(msg.name, msg.lat, msg.lon)) }
             return
@@ -293,7 +313,14 @@ class WalkSession(
             engine = e
             _ui.update { it.copy(phase = Phase.Walking) }
 
-            walkJobs += scope.launch { locationSource.fixes().collect { e.onSelfFix(it) } }
+            trailBook.clear()
+            route = if (s.saveRoutes) RouteRecorder() else null
+            walkJobs += scope.launch {
+                locationSource.fixes().collect {
+                    e.onSelfFix(it)
+                    route?.add(System.currentTimeMillis(), it.pos, it.accuracyM)
+                }
+            }
             walkJobs += scope.launch {
                 stepSource.readings().collect { counter ->
                     val t = System.currentTimeMillis()
@@ -315,7 +342,9 @@ class WalkSession(
             if (n % 2 == 0) e.selfPosition(now)?.let { link?.broadcast(MessageCodec.encode(it)) }
             if (n % 10 == 0) broadcastDaily()
             if (n % 30 == 0) steps.persistBaseline()
-            _ui.update { it.copy(walk = st) }
+            st.myPos?.let { trailBook.add("me", it) }
+            st.buddies.forEach { b -> b.pos?.let { trailBook.add(b.id, it) } }
+            _ui.update { it.copy(walk = st, trails = trailBook.snapshot()) }
             st.nudge?.let { showBanner(it.text, nudge = true) }
             e.takeSpot()?.let { offer -> _ui.update { it.copy(spotOffer = offer) } }
         }
@@ -355,6 +384,19 @@ class WalkSession(
         return (link?.broadcast(MessageCodec.encode(PeerMessage.Ping(now))) ?: 0) > 0
     }
 
+    /** Sets (and tells my partner about) a meeting point on the map. */
+    fun setPin(pos: LatLon, label: String = "") {
+        if (_ui.value.phase != Phase.Walking && _ui.value.phase != Phase.Lobby) return
+        val pin = MeetingPin(pos, label.trim().take(40))
+        _ui.update { it.copy(pin = pin) }
+        link?.broadcast(MessageCodec.encode(PeerMessage.Pin(pos.lat, pos.lon, pin.label)))
+    }
+
+    fun clearPin() {
+        _ui.update { it.copy(pin = null) }
+        link?.broadcast(MessageCodec.encode(PeerMessage.Unpin))
+    }
+
     fun shareSpot(s: FavoriteSpot) {
         link?.broadcast(MessageCodec.encode(PeerMessage.Spot(s.name, s.lat, s.lon)))
     }
@@ -379,6 +421,8 @@ class WalkSession(
             val walkId = repo.saveWalk(summary, walkStartMs)
             if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
             val card = Highlights.build(summary, showCalories = settings.caloriesEnabled)
+            route?.let { r -> if (settings.saveRoutes) routes.save(walkStartMs, r.points) }
+            route = null; trailBook.clear()
             engine = null
             _ui.update { it.copy(phase = Phase.Summary, summary = summary, highlights = card, walk = null, signaling = SignalingState.Idle, banner = null, peers = emptyList(), walkId = walkId, buddyDaily = emptyList(), reaction = null) }
         }
@@ -390,6 +434,7 @@ class WalkSession(
         link?.broadcast(MessageCodec.encode(PeerMessage.Bye))
         teardownNetwork()
         engine = null
+        route = null; trailBook.clear()
         _ui.value = SessionUi()
     }
 
@@ -410,6 +455,7 @@ class WalkSession(
         if (_ui.value.phase != Phase.Idle) return
         val start = System.currentTimeMillis()
         walkStartMs = start
+        trailBook.clear()
         _ui.value = SessionUi(phase = Phase.Walking, coupleMode = true, pingEnabled = true, demo = true, buddyDaily = listOf(RingBuddy("demo", "Sam", 6_120, 8_000)))
         walkJobs += scope.launch {
             var k = 0
@@ -426,15 +472,27 @@ class WalkSession(
                     status = BuddyStatus.Moving, statusText = "Walking with you", pos = null,
                 )
                 val together = TogetherSnapshot(el, (el * 0.92).toLong(), 92, minOf(el, 240_000L), minOf(el, 240_000L))
+                // A pretend route (north, then east) so the map has something to show.
+                val demoMe = demoPoint(sec * 1.3, 0.0)
+                val demoBuddy = demoPoint(sec * 1.3 + (if (gap > 12) 6.0 else -4.0), 8.0)
+                trailBook.add("me", demoMe); trailBook.add("demo", demoBuddy)
                 val st = WalkState(
                     nowMs = start + el, elapsedMs = el, myDistanceM = sec * 1.3, myVerifiedSteps = steps, myRawSteps = steps + 2,
                     myCadenceSpm = 108.0, myZone = PaceZone.Brisk, mySpeedMps = 1.3, myActivity = ActivityState.Walking,
-                    buddies = listOf(buddy), together = together, togetherNow = true, nudge = null, paceSuggestion = null,
+                    buddies = listOf(buddy.copy(pos = demoBuddy)), together = together, togetherNow = true, nudge = null, paceSuggestion = null,
+                    myPos = demoMe,
                 )
-                _ui.update { it.copy(walk = st, buddyDaily = listOf(RingBuddy("demo", "Sam", 6_120 + (steps * 0.97).toInt(), 8_000))) }
+                _ui.update { it.copy(trails = trailBook.snapshot(), walk = st, buddyDaily = listOf(RingBuddy("demo", "Sam", 6_120 + (steps * 0.97).toInt(), 8_000))) }
                 if (k % 25 == 0) showReaction("Sam", Reaction.values()[(k / 25) % Reaction.values().size])
             }
         }
+    }
+
+    private fun demoPoint(s: Double, lateral: Double): LatLon {
+        val o = LatLon(12.9716, 77.5946)
+        val leg = 420.0
+        fun at(p: LatLon, north: Double, east: Double) = LatLon(p.lat + north / 111_195.0, p.lon + east / (111_195.0 * Math.cos(Math.toRadians(p.lat))))
+        return if (s <= leg) at(o, s, lateral) else at(at(o, leg, 0.0), -lateral, s - leg)
     }
 
     private fun endDemoWalk() {

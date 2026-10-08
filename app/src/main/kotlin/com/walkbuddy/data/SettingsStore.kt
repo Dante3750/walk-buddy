@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.walkbuddy.domain.BodyProfile
 import com.walkbuddy.domain.Diet
+import com.walkbuddy.domain.LocationPrecision
 import com.walkbuddy.domain.QuietHours
 import com.walkbuddy.domain.Sex
 import com.walkbuddy.domain.StepLength
@@ -63,6 +64,13 @@ data class Settings(
     val buddyDay: Long = -1,
     val remindersSent: String = "",
     val recapSeenDay: Long = -1,
+    // ---- alpha 1.3 ----
+    /** How precisely this phone shares its position in an open group (partner walks are always exact). */
+    val groupPrecision: LocationPrecision = LocationPrecision.Exact,
+    /** Opt-in OpenStreetMap tile layer under the offline map. Off by default: tile requests reveal the area you view. */
+    val mapTiles: Boolean = false,
+    /** Opt-in: keep my own route of each walk as a GPX file on this phone. */
+    val saveRoutes: Boolean = false,
 ) {
     val profile: BodyProfile get() = BodyProfile(heightCm, weightKg, sex)
     val quietHours: QuietHours get() = QuietHours(quietEnabled, quietFromHour, quietToHour)
@@ -111,6 +119,9 @@ class SettingsStore(private val context: Context) {
         val buddyDay = longPreferencesKey("buddy_day")
         val remindersSent = stringPreferencesKey("reminders_sent")
         val recapSeen = longPreferencesKey("recap_seen_day")
+        val groupPrecision = stringPreferencesKey("group_precision")
+        val mapTiles = booleanPreferencesKey("map_tiles")
+        val saveRoutes = booleanPreferencesKey("save_routes")
         // Background step bookkeeping
         val lastCounter = longPreferencesKey("last_counter")
         val lastCounterT = longPreferencesKey("last_counter_t")
@@ -158,6 +169,9 @@ class SettingsStore(private val context: Context) {
             buddyDay = p[K.buddyDay] ?: -1,
             remindersSent = p[K.remindersSent].orEmpty(),
             recapSeenDay = p[K.recapSeen] ?: -1,
+            groupPrecision = LocationPrecision.fromName(p[K.groupPrecision]),
+            mapTiles = p[K.mapTiles] ?: false,
+            saveRoutes = p[K.saveRoutes] ?: false,
         )
     }
 
@@ -218,6 +232,9 @@ class SettingsStore(private val context: Context) {
     }
     suspend fun setDemoMode(on: Boolean) = context.settingsDataStore.edit { it[K.demo] = on }.let { }
     suspend fun setCelebratedDay(day: Long) = context.settingsDataStore.edit { it[K.celebrated] = day }.let { }
+    suspend fun setGroupPrecision(p: LocationPrecision) = context.settingsDataStore.edit { it[K.groupPrecision] = p.name }.let { }
+    suspend fun setMapTiles(on: Boolean) = context.settingsDataStore.edit { it[K.mapTiles] = on }.let { }
+    suspend fun setSaveRoutes(on: Boolean) = context.settingsDataStore.edit { it[K.saveRoutes] = on }.let { }
     suspend fun setRecapSeen(day: Long) = context.settingsDataStore.edit { it[K.recapSeen] = day }.let { }
 
     /** The buddy's progress as last seen during a walk. Only used to place their avatar on today's ring. */

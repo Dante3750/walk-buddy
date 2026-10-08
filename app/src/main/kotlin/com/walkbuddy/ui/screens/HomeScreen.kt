@@ -62,7 +62,10 @@ import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.GentleDay
 import com.walkbuddy.domain.GoalCelebration
 import com.walkbuddy.domain.Hero
+import com.walkbuddy.domain.Invite
+import com.walkbuddy.domain.Invites
 import com.walkbuddy.domain.JoinLink
+import com.walkbuddy.domain.LocationPrecision
 import com.walkbuddy.domain.Units
 import com.walkbuddy.domain.WeeklyGuidance
 import com.walkbuddy.share.ShareCard
@@ -93,7 +96,13 @@ private fun greeting(hour: Int, name: String): String {
 }
 
 @Composable
-fun HomeScreen(vm: AppViewModel, wide: Boolean) {
+fun HomeScreen(
+    vm: AppViewModel,
+    wide: Boolean,
+    onScan: () -> Unit = {},
+    onCreateGroup: () -> Unit = {},
+    onJoinGroup: () -> Unit = {},
+) {
     val home by vm.home.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val pendingJoin by vm.pendingJoin.collectAsStateWithLifecycle()
@@ -172,6 +181,10 @@ fun HomeScreen(vm: AppViewModel, wide: Boolean) {
             onSolo = { withLocation { vm.startLobby(null, solo = true) } },
             onDemoGoal = { vm.demoReachGoal() },
             onDemoWalk = { vm.startDemoWalk() },
+            onScan = onScan,
+            onCreateGroup = onCreateGroup,
+            onJoinGroup = onJoinGroup,
+            onDemoGroup = { vm.startDemoGroup() },
             onUseRealData = { vm.setDemoMode(false) },
         ),
     )
@@ -181,10 +194,13 @@ fun HomeScreen(vm: AppViewModel, wide: Boolean) {
             onDismissRequest = { joinDialog = false },
             title = { Text("Join a walk") },
             text = {
-                OutlinedTextField(
-                    value = codeText, onValueChange = { codeText = it.take(200) }, singleLine = true,
-                    label = { Text("6-character code or link") }, isError = codeText.isNotBlank() && JoinLink.parse(codeText) == null,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = codeText, onValueChange = { codeText = it.take(200) }, singleLine = true,
+                        label = { Text("6-character code or link") }, isError = codeText.isNotBlank() && JoinLink.parse(codeText) == null,
+                    )
+                    OutlinedButton(onClick = { joinDialog = false; onScan() }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Scan a QR code instead") }
+                }
             },
             confirmButton = {
                 TextButton(enabled = JoinLink.parse(codeText) != null, onClick = {
@@ -198,13 +214,30 @@ fun HomeScreen(vm: AppViewModel, wide: Boolean) {
 
     val link = pendingJoin
     if (link != null) {
-        val target = JoinLink.parse(link)
+        val invite = Invites.parse(link)
+        val nick = settings?.displayName.orEmpty().ifBlank { "Walker" }
         AlertDialog(
             onDismissRequest = { vm.pendingJoin.value = null },
-            title = { Text("Join this walk?") },
-            text = { Text(if (target == null) "That link is not a valid Walk Buddy link." else "Someone invited you to walk. Code ${target.code}. ${Copy.SHARE_LOCATION}") },
+            title = { Text(if (invite is Invite.Group) "Join this group walk?" else "Join this walk?") },
+            text = {
+                Text(
+                    when (invite) {
+                        null -> "That link is not a valid Walk Buddy link."
+                        is Invite.Group -> "You have been invited to an open group walk. Code ${invite.code}. You will appear as $nick. ${Copy.SHARE_LOCATION}"
+                        is Invite.Partner -> "Someone invited you to walk. Code ${invite.code}. ${Copy.SHARE_LOCATION}"
+                    },
+                )
+            },
             confirmButton = {
-                if (target != null) TextButton(onClick = { vm.pendingJoin.value = null; withLocation { vm.startLobby(link) } }) { Text("Join") }
+                when (invite) {
+                    null -> Unit
+                    is Invite.Group -> TextButton(onClick = {
+                        vm.pendingJoin.value = null
+                        val precision = settings?.groupPrecision ?: LocationPrecision.Exact
+                        withLocation { vm.joinGroup(link, nick, null, precision) }
+                    }) { Text("Join") }
+                    is Invite.Partner -> TextButton(onClick = { vm.pendingJoin.value = null; withLocation { vm.startLobby(link) } }) { Text("Join") }
+                }
             },
             dismissButton = { TextButton(onClick = { vm.pendingJoin.value = null }) { Text("Not now") } },
         )
@@ -222,6 +255,10 @@ class HomeActions(
     val onSolo: () -> Unit = {},
     val onDemoGoal: () -> Unit = {},
     val onDemoWalk: () -> Unit = {},
+    val onScan: () -> Unit = {},
+    val onCreateGroup: () -> Unit = {},
+    val onJoinGroup: () -> Unit = {},
+    val onDemoGroup: () -> Unit = {},
     val onUseRealData: () -> Unit = {},
 )
 
@@ -278,14 +315,26 @@ fun HomeContent(
     }
 
     val walk: @Composable () -> Unit = {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                Text("Start a walk together", style = MaterialTheme.typography.titleMedium)
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionCard("Walk with partner") {
+                Text("Two people, a private link between your phones. The couple walk, as before.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = a.onStartTogether, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                    Text("Start a walk together", style = MaterialTheme.typography.titleMedium)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilledTonalButton(onClick = a.onJoin, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Join with a code", textAlign = TextAlign.Center) }
+                    FilledTonalButton(onClick = a.onScan, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Scan QR", textAlign = TextAlign.Center) }
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilledTonalButton(onClick = a.onJoin, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Join with a code", textAlign = TextAlign.Center) }
-                FilledTonalButton(onClick = a.onSolo, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Walk solo") }
+            SectionCard("Open group walk") {
+                Text("Walk with a crowd. Anyone with the QR code, link or code can join, even after you have started, and everyone appears on one map.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = a.onCreateGroup, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                    Text("Create a group", style = MaterialTheme.typography.titleMedium)
+                }
+                FilledTonalButton(onClick = a.onJoinGroup, colors = tonalColors(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Join a group", textAlign = TextAlign.Center) }
+                if (h.demo) OutlinedButton(onClick = a.onDemoGroup, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Try a demo group walk") }
             }
+            FilledTonalButton(onClick = a.onSolo, colors = tonalColors(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Walk solo") }
             if (!locationGranted) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
         }
     }

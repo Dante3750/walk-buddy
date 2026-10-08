@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -32,9 +33,11 @@ class WalkService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val session = (application as WalkBuddyApplication).container.session
+        val container = (application as WalkBuddyApplication).container
+        val session = container.session
+        val group = container.groupSession
         if (intent?.action == ACTION_STOP) {
-            session.endWalk()
+            if (group.active) group.endWalk() else session.endWalk()
             return START_NOT_STICKY
         }
         Notifications.ensureChannels(this)
@@ -52,14 +55,17 @@ class WalkService : Service() {
             var lastText = ""
             var lastAt = 0L
             val widgetPrefs = getSharedPreferences("wb_widget", Context.MODE_PRIVATE)
-            session.ui.collect { ui ->
-                if (ui.phase == Phase.Idle || ui.phase == Phase.Summary) {
+            combine(session.ui, group.ui) { s, g -> s to g }.collect { (ui, g) ->
+                val groupOn = g.phase == GroupPhase.Active && !g.demo
+                if ((ui.phase == Phase.Idle || ui.phase == Phase.Summary) && !groupOn) {
                     ServiceCompat.stopForeground(this@WalkService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf()
                     return@collect
                 }
-                val text = when (ui.phase) {
-                    Phase.Lobby -> if (ui.solo) "Ready to walk" else "Waiting for your buddy"
+                val gw = g.walk
+                val text = when {
+                    groupOn -> if (gw == null) "Joining the group" else "Group walk, ${gw.memberCount} people, ${Format.distance(gw.myDistanceM)}"
+                    ui.phase == Phase.Lobby -> if (ui.solo) "Ready to walk" else "Waiting for your buddy"
                     else -> {
                         val w = ui.walk
                         if (w == null) "Walking" else "Walking, ${Format.distance(w.myDistanceM)}"
@@ -67,12 +73,13 @@ class WalkService : Service() {
                 }
                 val now = System.currentTimeMillis()
                 val w = ui.walk
-                val live = ui.phase == Phase.Walking && w != null && LiveUpdate.supported()
+                val mySteps = if (groupOn) gw?.myVerifiedSteps else w?.myVerifiedSteps
+                val live = (groupOn || ui.phase == Phase.Walking) && mySteps != null && LiveUpdate.supported()
                 if (text != lastText || (live && now - lastAt >= 5_000)) {
                     lastText = text
                     lastAt = now
                     val goal = widgetPrefs.getInt("goal", 6000).coerceAtLeast(500)
-                    val steps = w?.myVerifiedSteps?.toInt() ?: 0
+                    val steps = mySteps?.toInt() ?: 0
                     val pct = if (live) (steps * 100L / goal).toInt().coerceIn(0, 100) else null
                     val nm = getSystemService(android.app.NotificationManager::class.java)
                     nm?.notify(Notifications.ID_WALK, Notifications.walkOngoing(this@WalkService, text, stop, pct, if (live) "%,d".format(steps) else null))
@@ -90,8 +97,15 @@ class WalkService : Service() {
     companion object {
         const val ACTION_STOP = "com.walkbuddy.STOP"
 
+        /**
+         * Starts the walk service only when location permission is granted: Android 14 refuses a foreground service of type
+         * location without it. Without the service the walk still works while the app is on screen.
+         */
         fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, WalkService::class.java))
+            val granted = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+            runCatching { ContextCompat.startForegroundService(context, Intent(context, WalkService::class.java)) }
         }
     }
 }

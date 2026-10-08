@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="shared" path="shared/" />
+    <!-- Saved routes (GPX) are shared only when the user taps Share on one. -->
+    <files-path name="routes" path="routes/" />
 </paths>

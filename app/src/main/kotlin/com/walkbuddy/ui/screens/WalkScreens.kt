@@ -51,6 +51,11 @@ import com.walkbuddy.ui.components.MoodCheckIn
 import com.walkbuddy.ui.components.StepHero
 import com.walkbuddy.ui.components.StatPill
 import com.walkbuddy.domain.BuddyCard
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.walkbuddy.ui.components.MapPerson
+import com.walkbuddy.ui.components.WalkMap
 import com.walkbuddy.domain.BuddyStatus
 import com.walkbuddy.domain.Copy
 import com.walkbuddy.domain.Format
@@ -88,6 +93,8 @@ class WalkActions(
     val onShareSummary: () -> Unit = {},
     val onFinish: () -> Unit = {},
     val onRateLimited: () -> Unit = {},
+    val onSetPin: (com.walkbuddy.domain.LatLon) -> Unit = {},
+    val onClearPin: () -> Unit = {},
 )
 
 /** Full-screen flow shown whenever a session is not idle: lobby, live walk, summary. */
@@ -128,11 +135,13 @@ fun WalkFlow(vm: AppViewModel, ui: SessionUi) {
         },
         onFinish = { vm.finishSummary() },
         onRateLimited = { Toast.makeText(ctx, "One moment before the next one", Toast.LENGTH_SHORT).show() },
+        onSetPin = { vm.setPin(it) },
+        onClearPin = { vm.clearPin() },
     )
     Column(Modifier.fillMaxSize()) {
         when (ui.phase) {
             Phase.Lobby -> LobbyContent(ui, a)
-            Phase.Walking -> LiveContent(ui, home?.verifiedSteps, home?.goal, unit, wide, a)
+            Phase.Walking -> LiveContent(ui, home?.verifiedSteps, home?.goal, unit, wide, a, tilesEnabled = settings?.mapTiles == true)
             Phase.Summary -> SummaryContent(ui, a)
             Phase.Idle -> Unit
         }
@@ -211,12 +220,65 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
     }
 }
 
+/** Overview or Map, for a walk with a partner. The map is the same one the open group walk uses. */
 @Composable
-fun LiveContent(ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions) {
+fun LiveContent(
+    ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions,
+    tilesEnabled: Boolean = false,
+) {
     var confirmEnd by remember { mutableStateOf(false) }
+    var view by rememberSaveable { mutableIntStateOf(0) }
+    val w = ui.walk
+    if (w != null && view == 1) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ViewSwitch(view) { view = it }
+            PartnerMapView(ui, w, unit, tilesEnabled, a, Modifier.weight(1f).fillMaxWidth())
+            Button(onClick = { confirmEnd = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("End walk") }
+        }
+    } else {
+        LiveOverview(ui, todaySteps, todayGoal, unit, wide, a, switch = { if (w != null) ViewSwitch(view) { view = it } }, onAskEnd = { confirmEnd = true })
+    }
+    if (confirmEnd) {
+        AlertDialog(
+            onDismissRequest = { confirmEnd = false },
+            title = { Text("End this walk?") },
+            text = { Text("Live sharing stops right away and your summary is saved on this phone.") },
+            confirmButton = { TextButton(onClick = { confirmEnd = false; a.onEndWalk() }) { Text("End walk") } },
+            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep walking") } },
+        )
+    }
+}
+
+@Composable
+private fun ViewSwitch(selected: Int, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = selected == 0, onClick = { onSelect(0) }, label = { Text("Overview") }, modifier = Modifier.heightIn(min = 48.dp))
+        FilterChip(selected = selected == 1, onClick = { onSelect(1) }, label = { Text("Map") }, modifier = Modifier.heightIn(min = 48.dp))
+    }
+}
+
+@Composable
+private fun PartnerMapView(
+    ui: SessionUi, w: com.walkbuddy.domain.WalkState, unit: com.walkbuddy.domain.UnitSystem, tiles: Boolean, a: WalkActions, modifier: Modifier,
+) {
+    val people = listOf(MapPerson("me", "You", w.myPos, ui.trails["me"].orEmpty(), isMe = true)) +
+        w.buddies.map { MapPerson(it.id, it.name, it.pos, ui.trails[it.id].orEmpty(), stale = it.status == BuddyStatus.ConnectionLost) }
+    WalkMap(
+        people = people, pin = ui.pin, tilesEnabled = tiles, imperial = unit == com.walkbuddy.domain.UnitSystem.Imperial,
+        canPin = true, onSetPin = a.onSetPin, onClearPin = a.onClearPin, modifier = modifier,
+        initialFollow = com.walkbuddy.domain.MapFollow.Group,
+    )
+}
+
+@Composable
+private fun LiveOverview(
+    ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walkbuddy.domain.UnitSystem, wide: Boolean, a: WalkActions,
+    switch: @Composable () -> Unit, onAskEnd: () -> Unit,
+) {
     val w = ui.walk
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        switch()
         if (w == null) {
             EmptyState("Getting ready", "Looking for a GPS fix. Stepping outside helps.")
             OutlinedButton(onClick = a.onEndWalk, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
@@ -317,7 +379,7 @@ fun LiveContent(ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walk
                 if (ui.pingEnabled && w.buddies.isNotEmpty()) {
                     OutlinedButton(onClick = a.onPing, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Thinking of you") }
                 }
-                Button(onClick = { confirmEnd = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("End walk") }
+                Button(onClick = onAskEnd, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("End walk") }
                 if (ui.demo) Disclaimer("Demo walk: nothing here is saved.")
                 Disclaimer(Copy.SHARING_ENDS)
             }
@@ -331,15 +393,6 @@ fun LiveContent(ui: SessionUi, todaySteps: Int?, todayGoal: Int?, unit: com.walk
             hero()
             rest()
         }
-    }
-    if (confirmEnd) {
-        AlertDialog(
-            onDismissRequest = { confirmEnd = false },
-            title = { Text("End this walk?") },
-            text = { Text("Live sharing stops right away and your summary is saved on this phone.") },
-            confirmButton = { TextButton(onClick = { confirmEnd = false; a.onEndWalk() }) { Text("End walk") } },
-            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep walking") } },
-        )
     }
 }
 

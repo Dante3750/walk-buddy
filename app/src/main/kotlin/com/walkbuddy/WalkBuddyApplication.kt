@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.walkbuddy.data.AppDatabase
 import com.walkbuddy.data.AppRepository
+import com.walkbuddy.data.RouteStore
 import com.walkbuddy.data.SettingsStore
 import com.walkbuddy.data.StepRecorder
 import com.walkbuddy.health.HealthBridges
@@ -11,6 +12,7 @@ import com.walkbuddy.notify.Notifications
 import com.walkbuddy.notify.PeriodicSampler
 import com.walkbuddy.sensors.LocationSource
 import com.walkbuddy.sensors.StepSource
+import com.walkbuddy.session.GroupSession
 import com.walkbuddy.session.WalkSession
 
 /** Hand-rolled dependency container (same approach as the template project): small enough that DI would only add build risk. */
@@ -23,7 +25,9 @@ class AppContainer(context: Context) {
     val steps = StepRecorder(stepSource, repository, settings)
     val health = HealthBridges.create(context)
     val locationSource = LocationSource(context)
-    val session = WalkSession(context.applicationContext, repository, settings, steps, stepSource, locationSource, health)
+    val routes = RouteStore(context.applicationContext)
+    val session = WalkSession(context.applicationContext, repository, settings, steps, stepSource, locationSource, health, routes)
+    val groupSession = GroupSession(context.applicationContext, repository, settings, steps, stepSource, locationSource, health, routes)
 }
 
 class WalkBuddyApplication : Application() {

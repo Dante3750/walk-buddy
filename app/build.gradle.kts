@@ -21,8 +21,8 @@ android {
         applicationId = "com.walkbuddy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0-alpha"
+        versionCode = 4
+        versionName = "1.3.0-alpha"
         buildConfigField("boolean", "HEALTH_CONNECT", healthConnectEnabled.toString())
     }
 
@@ -87,6 +87,13 @@ dependencies {
     // Peer-to-peer data channel. Both are real published artifacts; their resolution/compile is UNVERIFIED until CI runs.
     implementation(libs.okhttp)
     implementation(libs.stream.webrtc)
+
+    // QR scanning for invites. Optional to use: a link or code can always be typed instead.
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.zxing.core)
 
     if (healthConnectEnabled) {
         implementation(libs.health.connect)
