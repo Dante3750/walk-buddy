@@ -1,5 +1,20 @@
 # Changelog
 
+## alpha 1.6 (1.6.0-alpha)
+
+Fix: steps were not counting, and did not survive the app being closed.
+
+- Root cause: outside a walk, steps were only sampled by a 15 minute inexact alarm. There was no foreground service or WorkManager safety net, the boot receiver only re-armed that alarm, sampling was skipped until onboarding finished and during walks, the baseline lived in DataStore separately from the day totals, and the activity permission was asked once in onboarding with no visible state afterwards (and reported as denied on Android 8 and 9).
+- New always-on counter: `StepService`, a low-priority foreground service (type health on Android 14+, `FOREGROUND_SERVICE_HEALTH`) holding one batched `TYPE_STEP_COUNTER` listener (60 s max report latency, immediate while the app is on screen), with a quiet "N steps today" notification.
+- Safety nets: WorkManager (15 min) and the alarm read the cumulative counter and store the delta, even if the service was killed. Boot and app-update receivers restart everything, tolerating Android 12+ background-start refusals.
+- Storage: day totals and the counter baseline are written in one Room transaction (new `step_state` table, database version 3 with a migration). The UI reads the database only. Works fully offline.
+- Domain (pure Kotlin, 24 new tests): `StepLedger` (baseline, delta, reboot by lower value or later boot time, clock set back, midnight and DST day splitting with exact sums), `StepHealth` status, `AccelStepDetector` fallback. Fallbacks: step detector, then accelerometer.
+- Walk and group sessions read the same feed and no longer write daily steps (no double counting). Sitting reminders use today's total instead of the old 15 minute delta.
+- Home: permission rationale card, blocked state with "Open app settings", no-sensor state, and a dismissible battery tip. Settings: "Step counting health" (permission, sensor, last reading, service, battery) with links to app settings, battery settings and dontkillmyapp.com.
+- Widget is refreshed by the service and the safety nets.
+- Docs: README "How step counting works" and troubleshooting.
+- Not verified on a device (CI compiles and runs the domain tests only): real-sensor batching, OEM battery killers, Android 12+ start restrictions, reboot recovery.
+
 ## alpha 1.5 (1.5.0-alpha)
 
 - One built-in server, `wss://walk-buddy-server-sxpz.onrender.com`, held in a single constant (`ServerConfig.URL` in the domain module). It is the only server for partner signaling and open groups.

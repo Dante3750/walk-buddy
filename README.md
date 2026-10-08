@@ -53,6 +53,26 @@ Walking is better with someone, but most step apps are built for streaks and lea
 
 **Around the system:** Glance home-screen widget, Quick Settings tile, shortcuts, edge-to-edge, predictive back, tablet layouts, light, dark (true black) and optional dynamic colour, English and Hindi system strings.
 
+## How step counting works
+
+Steps count all day, on their own, and have nothing to do with walk sessions.
+
+- **Sensor.** The phone's hardware step counter (`TYPE_STEP_COUNTER`) keeps counting even while Walk Buddy is closed. A small foreground service (a quiet "N steps today" notification, type *health*) keeps one batched listener registered. If the phone has no step counter, the step detector is used, then the accelerometer (approximate, and only while the phone is awake).
+- **Baseline and delta.** The counter is cumulative since boot. Walk Buddy stores the last value it saw and adds the difference on every reading, so steps taken while the app was killed are recovered on the next read. A lower value (or a later boot time) means the phone rebooted, and the new value is then the delta.
+- **Stored first.** Each update writes the day total and the new baseline in one Room transaction, keyed by local date. A delta that spans midnight is split across the days (DST aware). The screen only reads the database, so numbers survive the app being killed, and no network is involved.
+- **Safety nets.** A WorkManager job and an inexact alarm (about every 15 minutes) read the counter even if the service was stopped. Boot and app-update receivers restart everything; Android 12+ sometimes refuses a background service start, and the safety nets cover that.
+- **Walks reuse the same feed.** A walk or group walk reads the same readings and never writes daily steps itself, so nothing is counted twice.
+- **See it working.** Home shows the live number while the app is open. Settings has a "Step counting health" card: permission, sensor, last reading, service, battery.
+
+### Troubleshooting: steps are not counting
+
+1. **Permission.** Android 10+ keeps step sensors silent until *Physical activity* is allowed. Home shows an "Allow step counting" card; if Android stopped asking, the card offers "Open app settings" (Permissions, Physical activity, Allow).
+2. **Battery optimisation.** Many phones stop background apps. Settings, Step counting health, "Battery settings" opens the system list; set Walk Buddy to *Unrestricted* / *Don't optimise*. Walk Buddy never requests this silently.
+3. **Per-maker extras.** Xiaomi/MIUI (Autostart on, battery saver "No restrictions"), Samsung (Never sleeping apps, remove from Deep sleeping), Huawei (App launch: manage manually), OnePlus/Oppo/Vivo (allow background activity and auto-start), Pixel (Unrestricted). The per-phone steps are collected at [dontkillmyapp.com](https://dontkillmyapp.com/).
+4. **Notification hidden.** On Android 13+ the quiet notification needs the notification permission to be visible, but counting does not depend on it. Swiping it away does not stop counting.
+5. **Force stop.** "Force stop" in Android settings halts all background work until you open Walk Buddy again. The hardware counter keeps counting, and the first read after you reopen recovers those steps.
+6. **Reboot.** The hardware counter restarts at zero after a reboot; steps taken between the last reading and the shutdown cannot be recovered by any app. Steps after the reboot are counted from the first reading.
+
 ## Screenshots
 
 | Home | Home (dark) | Live walk | Weekly recap |
