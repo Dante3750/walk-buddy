@@ -33,7 +33,7 @@ fun FuelScreen(vm: AppViewModel) {
     val fuel by vm.fuel.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val hot by vm.hotDay.collectAsStateWithLifecycle()
-    FuelContent(settings, fuel, hot, onSave = { vm.saveSettings(it) }, onHot = { onHot(it) })
+    FuelContent(settings, fuel, hot, onSave = { vm.saveSettings(it) }, onHot = { vm.hotDay.value = it })
 }
 
 @Composable
