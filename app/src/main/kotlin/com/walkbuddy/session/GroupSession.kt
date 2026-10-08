@@ -7,6 +7,14 @@ import com.walkbuddy.data.RouteStore
 import com.walkbuddy.data.Settings
 import com.walkbuddy.data.SettingsStore
 import com.walkbuddy.data.StepRecorder
+import com.walkbuddy.domain.Avatar
+import com.walkbuddy.domain.AvatarCode
+import com.walkbuddy.domain.LocationStatus
+import com.walkbuddy.domain.LocationStatusLogic
+import com.walkbuddy.domain.Polyline
+import com.walkbuddy.domain.SharedMode
+import com.walkbuddy.domain.SharedWalkRecorder
+import com.walkbuddy.domain.TrackBuilders
 import com.walkbuddy.domain.GroupClientMessage
 import com.walkbuddy.domain.GroupConfig
 import com.walkbuddy.domain.GroupCopy
@@ -100,6 +108,10 @@ data class GroupUi(
     val endedReason: String? = null,
     val groupSteps: Long = 0,
     val walkId: Long? = null,
+    val locStatus: LocationStatus = LocationStatus.Ok,
+    val locSearchingSec: Long = 0,
+    val myAvatar: Avatar = Avatar.Default,
+    val myId: String = "",
 )
 
 /**
@@ -134,7 +146,7 @@ class GroupSession(
     private var engine: GroupEngine? = null
     private var walkStartMs = 0L
     private val net = NetworkWatcher(app)
-    private val reconnector = Reconnector(scope, net, maxAttempts = 8, stillNeeded = { !ending && active }, reconnect = { if (_ui.value.connection == SignalingState.Failed) connect() })
+    private val reconnector = Reconnector(scope, net, maxAttempts = 40, stillNeeded = { !ending && active }, reconnect = { if (_ui.value.connection == SignalingState.Failed) connect() })
     private var netJob: Job? = null
     private val sendGate = SendGate()
     private val motion = MotionGate()
@@ -146,6 +158,10 @@ class GroupSession(
     private var route: RouteRecorder? = null
     private var sweeperSelf = false
     private val requests = LinkedHashMap<String, String>()
+    private var locJob: Job? = null
+    private var recorder: SharedWalkRecorder? = null
+    private var searchingSinceMs = 0L
+    private var hadLocationPermission = false
 
     // ---------- create / join ----------
 
@@ -187,13 +203,18 @@ class GroupSession(
         requests.clear()
         engine = null
         route = if (settings.saveRoutes) RouteRecorder() else null
+        recorder = null
         _ui.value = GroupUi(
-            phase = GroupPhase.Active, precision = prec, quiet = settings.quietByDefault,
+            phase = GroupPhase.Active, precision = prec, quiet = settings.quietByDefault, myAvatar = settings.avatar, myId = selfId,
         )
         // Listen for the network only while a group is open; when it returns after the retries ran out, start over once.
         net.start()
         netJob?.cancel()
-        netJob = scope.launch { net.online.collect { if (it) reconnector.onNetworkBack() } }
+        netJob = scope.launch {
+            launch { net.online.collect { if (it) reconnector.onNetworkBack() } }
+            // The phone moved to another network: the old socket is dead even if it does not know yet. Rejoin at once with the same key.
+            launch { net.changes.collect { if (active && !ending && _ui.value.connection == SignalingState.Connected) { reconnector.cancel(); client?.connect(ServerConfig.URL) } } }
+        }
     }
 
     private fun connect() {
@@ -227,11 +248,11 @@ class GroupSession(
                     client?.send(
                         GroupClientMessage.Create(
                             peerId = selfId, key = key, name = nickname, approval = opts.approval, ttlMin = opts.ttlMin,
-                            goalSteps = opts.goalSteps, title = opts.title.trim().take(40),
+                            goalSteps = opts.goalSteps, title = opts.title.trim().take(40), avatar = AvatarCode.encode(settings.avatar),
                         ),
                     )
                 } else if (c != null) {
-                    client?.send(GroupClientMessage.Join(c, selfId, key, nickname))
+                    client?.send(GroupClientMessage.Join(c, selfId, key, nickname, AvatarCode.encode(settings.avatar)))
                 }
             }
             SignalingState.Failed -> reconnector.onFailed()
@@ -248,8 +269,8 @@ class GroupSession(
             is GroupServerMessage.Joined -> onJoined(m, now)
             is GroupServerMessage.Pending -> _ui.update { it.copy(waitingForApproval = true) }
             is GroupServerMessage.MemberJoined -> {
-                engine?.onMemberJoined(m.peerId, m.name)
-                _ui.update { u -> u.copy(roster = (u.roster.filter { it.peerId != m.peerId } + RosterEntry(m.peerId, m.name, m.host))) }
+                engine?.onMemberJoined(m.peerId, m.name, m.avatar)
+                _ui.update { u -> u.copy(roster = (u.roster.filter { it.peerId != m.peerId } + RosterEntry(m.peerId, m.name, m.host, m.avatar))) }
                 // Help the newcomer see me quickly, and let them see the meeting point. A burst of joins becomes one message.
                 if (sendGate.urgent(now)) sendUpdate()
                 val pin = _ui.value.pin
@@ -328,13 +349,10 @@ class GroupSession(
         engine = e
         sendGate.reset(); motion.reset()
         power.setWalk(true, groupSize = maxOf(1, _ui.value.roster.size))
-        walkJobs += scope.launch {
-            // Location only while this walk is tracked, at the rate the power policy asks for (it follows screen, movement, group size, savers).
-            locationSource.fixes(power.locationPlans()).collect { fix ->
-                e.onSelfFix(fix)
-                route?.add(System.currentTimeMillis(), fix.pos, fix.accuracyM)
-            }
-        }
+        recorder = SharedWalkRecorder(now, SharedMode.Group)
+        searchingSinceMs = now
+        hadLocationPermission = locationSource.hasPermission()
+        startLocation(e)
         walkJobs += scope.launch {
             // Same feed as the all-day counter; the walk never writes daily steps itself, so nothing is counted twice.
             steps.acquire("group")
@@ -350,6 +368,42 @@ class GroupSession(
         walkJobs += scope.launch { tickLoop(e) }
     }
 
+    /** Location only while this walk is tracked, at the rate the power policy asks for (it follows screen, movement, group size, savers). */
+    private fun startLocation(e: GroupEngine) {
+        locJob?.cancel()
+        locJob = scope.launch {
+            locationSource.fixes(power.locationPlans()).collect { fix ->
+                e.onSelfFix(fix)
+                route?.add(System.currentTimeMillis(), fix.pos, fix.accuracyM)
+            }
+        }
+        locJob?.let { walkJobs += it }
+    }
+
+    /** The person just allowed location (or switched it on) while the walk runs: start listening again. */
+    fun onLocationAvailable() {
+        val e = engine ?: return
+        if (active && !_ui.value.demo) startLocation(e)
+    }
+
+    private fun locationStatus(st: GroupState, now: Long): Pair<LocationStatus, Long> {
+        val perm = locationSource.hasPermission()
+        if (perm && !hadLocationPermission) engine?.let { startLocation(it) }
+        hadLocationPermission = perm
+        val status = LocationStatusLogic.of(perm, locationSource.anyProviderOn(), st.locationQuality, locationSource.hasPrecisePermission())
+        if (status != LocationStatus.Searching) searchingSinceMs = now
+        return status to ((now - searchingSinceMs) / 1000L).coerceAtLeast(0)
+    }
+
+    private fun recordShared(st: GroupState, now: Long) {
+        val rec = recorder ?: return
+        if (st.members.isEmpty()) return
+        val walkers = TrackBuilders.forGroup(st, nickname, settings.avatar)
+        val lanes = TrackBuilders.recLanes(walkers, { w -> AvatarCode.encode(w.avatar) }, { w -> if (w.isMe) st.myDistanceM else null })
+        val xs = walkers.mapNotNull { it.xM }
+        rec.onFrame(now, lanes, if (xs.size >= 2) xs.max() - xs.min() else null)
+    }
+
     private suspend fun tickLoop(e: GroupEngine) {
         while (true) {
             // The loop pace follows the power policy: every second with the screen on, every few seconds in a pocket.
@@ -359,7 +413,9 @@ class GroupSession(
             power.setMoving(motion.update(now, st.mySpeedMps))
             power.setGroupSize(st.memberCount)
             if (sendGate.poll(now, power.plan().sendIntervalMs)) sendUpdate()
-            _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps) }
+            val (locSt, locSec) = locationStatus(st, now)
+            recordShared(st, now)
+            _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps, locStatus = locSt, locSearchingSec = locSec) }
             st.nudge?.let { showBanner(it.text, nudge = true) }
             if (st.goal.reached && !goalCelebrated && st.goal.goal > 0) {
                 goalCelebrated = true
@@ -463,6 +519,9 @@ class GroupSession(
         ending = true
         val e = engine
         val wasJoined = _ui.value.joined
+        // teardown() clears these; the saving below runs after it.
+        val finishedRoute = route
+        val finishedRecorder = recorder
         if (leaveRoom && wasJoined) client?.send(GroupClientMessage.Leave)
         walkJobs.forEach { it.cancel() }; walkJobs.clear()
         teardown()
@@ -480,13 +539,34 @@ class GroupSession(
                 walkId = repo.saveWalk(summary.copy(buddyCount = 0, togetherPct = null, longestTogetherMs = 0), walkStartMs)
                 if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
             }
-            route?.let { r -> if (settings.saveRoutes) routes.save(walkStartMs, r.points) }
+            finishedRoute?.let { r -> if (settings.saveRoutes) routes.save(walkStartMs, r.points) }
+            saveSharedWalk(finishedRecorder, finishedRoute, summary, now)
             val card = Highlights.build(summary, showCalories = settings.caloriesEnabled)
             engine = null
             _ui.value = GroupUi(
                 phase = GroupPhase.Summary, summary = summary, highlights = card, endedReason = reason, groupSteps = groupSteps, walkId = walkId,
                 precision = precision,
             )
+        }
+    }
+
+    /** Keeps the replay of a group walk for the "Walks together" history. A failure here must never lose the summary. */
+    private suspend fun saveSharedWalk(rec: SharedWalkRecorder?, route: RouteRecorder?, summary: WalkSummary, endMs: Long) {
+        if (rec == null) return
+        if (rec.laneCount < 2 || endMs - walkStartMs < 60_000L) return
+        runCatching {
+            val st = _ui.value.walk
+            val lastFrame = st?.let { s ->
+                TrackBuilders.recLanes(TrackBuilders.forGroup(s, nickname, settings.avatar), { w -> AvatarCode.encode(w.avatar) }, { w -> if (w.isMe) summary.distanceM else null })
+            }
+            val points = route?.points.orEmpty().map { LatLon(it.lat, it.lon) }
+            val poly = if (settings.saveRoutes && points.size >= 2) Polyline.encode(Polyline.simplify(points)) else null
+            val title = _ui.value.settings.title.ifBlank { "Group walk" }
+            val record = rec.build(
+                endMs = endMs, title = title, memberCount = maxOf(rec.laneCount, st?.memberCount ?: 0), togetherPct = st?.together?.scorePct ?: 0,
+                longestTogetherMs = st?.together?.longestStreakMs ?: 0, route = poly, lastFrame = lastFrame,
+            )
+            repo.saveSharedWalk(record)
         }
     }
 
@@ -500,7 +580,7 @@ class GroupSession(
         net.stop()
         client?.close(); client = null
         requests.clear()
-        route = null
+        route = null; recorder = null
     }
 
     // ---------- demo group (no server, no permissions, nothing saved) ----------

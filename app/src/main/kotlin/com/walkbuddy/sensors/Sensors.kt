@@ -154,47 +154,68 @@ class StepSource(context: Context) {
  * Plain platform LocationManager (GPS and network providers). No Play Services. Caller must hold the location permission.
  * Updates exist only while [fixes] is collected, which the sessions do only during an active walk; there is no background location.
  */
-class LocationSource(context: Context) {
+class LocationSource(private val context: Context) {
     private val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+    /** Either the precise or the approximate location permission. Approximate alone still gives network based positions. */
+    fun hasPermission(): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    fun hasPrecisePermission(): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** True when the GPS or the network provider is switched on in the phone's settings. */
+    fun anyProviderOn(): Boolean = gpsEnabled() || runCatching { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)
 
     /**
      * Fixes at the rate [plans] currently asks for (re-requested whenever the plan changes). GPS carries the walk; the network
      * provider is a slower backup (4x the interval, at least 15 s apart) for the first seconds and for tunnels, not a second GPS.
+     *
+     * Both providers are always requested: a provider that is switched off simply stays quiet and starts delivering the moment it is
+     * switched on, so turning Location on during a walk works without restarting it. A provider the permission does not cover
+     * (GPS with only approximate location) is skipped. A recent last known position is delivered first so the map is not blank.
      */
     @SuppressLint("MissingPermission")
     fun fixes(plans: Flow<LocationPlan>): Flow<Fix> = callbackFlow {
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                trySend(
-                    Fix(
-                        tMs = location.time,
-                        lat = location.latitude,
-                        lon = location.longitude,
-                        accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null,
-                        speedMps = if (location.hasSpeed()) location.speed.toDouble() else null,
-                    )
-                )
-            }
+        fun toFix(location: Location) = Fix(
+            tMs = location.time,
+            lat = location.latitude,
+            lon = location.longitude,
+            accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null,
+            speedMps = if (location.hasSpeed()) location.speed.toDouble() else null,
+        )
+        var current: LocationPlan? = null
+        lateinit var listener: LocationListener
 
-            // Older Android versions (before 11) still call these; implementing them avoids AbstractMethodError.
-            override fun onProviderEnabled(provider: String) = Unit
+        fun request(plan: LocationPlan) {
+            runCatching { manager.removeUpdates(listener) }
+            for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                if (!runCatching { manager.allProviders.contains(p) }.getOrDefault(false)) continue
+                val network = p == LocationManager.NETWORK_PROVIDER
+                val every = if (network) maxOf(plan.intervalMs * 4, 15_000L) else plan.intervalMs
+                val distance = if (network) maxOf(plan.minDistanceM * 4, 25f) else plan.minDistanceM
+                // SecurityException (no permission for that provider) and IllegalArgumentException (no such provider) are expected here.
+                runCatching { manager.requestLocationUpdates(p, every, distance, listener, Looper.getMainLooper()) }
+            }
+        }
+
+        listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) { trySend(toFix(location)) }
+
+            override fun onProviderEnabled(provider: String) { current?.let { request(it) } }
 
             override fun onProviderDisabled(provider: String) = Unit
 
             @Deprecated("Deprecated in Java")
             override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
         }
+        // Something to show straight away if the phone knows where it was a moment ago.
+        lastKnown()?.let { if (System.currentTimeMillis() - it.tMs in 0..120_000L) trySend(it) }
         val job = launch {
             plans.distinctUntilChanged().collect { plan ->
-                runCatching { manager.removeUpdates(listener) }
-                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-                    .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
-                for (p in providers) {
-                    val network = p == LocationManager.NETWORK_PROVIDER
-                    val every = if (network) maxOf(plan.intervalMs * 4, 15_000L) else plan.intervalMs
-                    val distance = if (network) maxOf(plan.minDistanceM * 4, 25f) else plan.minDistanceM
-                    runCatching { manager.requestLocationUpdates(p, every, distance, listener, Looper.getMainLooper()) }
-                }
+                current = plan
+                request(plan)
             }
         }
         awaitClose { job.cancel(); runCatching { manager.removeUpdates(listener) } }
