@@ -131,7 +131,7 @@ fun TrendsContent(
         SectionCard("Our week") {
             Text(t.ourWeek.headlineValue, style = com.walkbuddy.ui.theme.NumberStyle.copy(fontSize = 44.sp, lineHeight = 48.sp), color = MaterialTheme.colorScheme.secondary)
             Text(t.ourWeek.headlineLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            t.ourWeek.lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { t.ourWeek.lines.forEach { Text(it, style = MaterialTheme.typography.bodyLarge) } }
             OutlinedButton(
                 onClick = { onShareWeek(t) },
                 modifier = Modifier.heightIn(min = 48.dp),

@@ -283,8 +283,8 @@ fun HomeContent(
                 Text("Start a walk together", style = MaterialTheme.typography.titleMedium)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilledTonalButton(onClick = a.onJoin, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Join with a code", textAlign = TextAlign.Center) }
-                FilledTonalButton(onClick = a.onSolo, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Walk solo") }
+                FilledTonalButton(onClick = a.onJoin, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Join with a code", textAlign = TextAlign.Center) }
+                FilledTonalButton(onClick = a.onSolo, colors = tonalColors(), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Walk solo") }
             }
             if (!locationGranted) Disclaimer("Location is only used during a walk. You will be asked when you start one.")
         }
@@ -352,6 +352,11 @@ fun HomeContent(
         }
     }
 }
+
+@Composable
+private fun tonalColors() = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+    containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+)
 
 /** "Day 412 together" and the next date to look forward to, on a berry gradient. White text keeps strong contrast in both themes. */
 @Composable

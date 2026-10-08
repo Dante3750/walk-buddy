@@ -1,15 +1,28 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="240dp"
     android:height="240dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- the launcher mark, with dots that read on both the light and the black splash background -->
     <path
         android:pathData="M54,30 A24,24 0 1 1 30,54"
-        android:strokeColor="#FF6B5E"
-        android:strokeWidth="5"
-        android:strokeLineCap="round" />
-    <path android:fillColor="#FFB347" android:pathData="M47,44a4.2,6 0,1 0,0.01 0z" />
-    <path android:fillColor="#FFB347" android:pathData="M47,54a3,3 0,1 0,0.01 0z" />
-    <path android:fillColor="#FF6B8A" android:pathData="M62,51a4.2,6 0,1 0,0.01 0z" />
-    <path android:fillColor="#FF6B8A" android:pathData="M62,61a3,3 0,1 0,0.01 0z" />
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="30"
+                android:startY="30"
+                android:endX="78"
+                android:endY="78">
+                <item android:offset="0" android:color="#FFFFB347" />
+                <item android:offset="0.55" android:color="#FFFF6B5E" />
+                <item android:offset="1" android:color="#FFD63384" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#FFFF6B5E" android:pathData="M47,54m-4.8,0a4.8,4.8 0,1 1,9.6 0a4.8,4.8 0,1 1,-9.6 0" />
+    <path android:fillColor="#FF0E9E9A" android:pathData="M61,54m-4.8,0a4.8,4.8 0,1 1,9.6 0a4.8,4.8 0,1 1,-9.6 0" />
 </vector>

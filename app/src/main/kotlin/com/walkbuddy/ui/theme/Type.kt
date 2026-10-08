@@ -35,7 +35,7 @@ val BigNumberStyle = TextStyle(
     fontFamily = DisplayFamily,
     fontWeight = FontWeight.ExtraBold,
     fontFeatureSettings = "tnum",
-    letterSpacing = (-0.03).em,
+    letterSpacing = (-0.005).em,
 )
 
 /** Medium-size numbers in stat strips and cards. */

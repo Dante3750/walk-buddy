@@ -58,9 +58,9 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** Rough width of the number in em for the bundled display face: tabular digits 0.585, comma and point about 0.2, minus the tight tracking. */
+/** Rough width of the number in em for the bundled display face: tabular digits 0.585, comma and point about 0.2, minus a hair of tracking. */
 private fun numberEm(text: String): Float {
-    val em = text.sumOf { if (it == ',' || it == '.') 0.2 else 0.585 } - 0.03 * text.length
+    val em = text.sumOf { if (it == ',' || it == '.') 0.2 else 0.585 } - 0.005 * text.length
     return em.toFloat().coerceAtLeast(0.6f)
 }
 
@@ -112,7 +112,7 @@ fun StepHero(
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val diameter = if (maxWidth < maxSize) maxWidth else maxSize
         val stroke = diameter * 0.068f
-        val inner = (diameter - stroke * 2 - 36.dp).value.coerceAtLeast(80f)
+        val inner = (diameter - stroke * 2 - 52.dp).value.coerceAtLeast(80f)
         val density = LocalDensity.current
         val numberSp = with(density) { (inner / numberEm(fitText)).coerceIn(56f, 132f).dp.toSp() }
         val radiusPx = with(density) { (diameter - stroke).toPx() / 2f }

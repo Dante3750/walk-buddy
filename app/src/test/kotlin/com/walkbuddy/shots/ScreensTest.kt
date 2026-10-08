@@ -26,6 +26,10 @@ import com.walkbuddy.ui.screens.WalkActions
 import app.cash.paparazzi.DeviceConfig
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import com.walkbuddy.ui.components.NavItem
 import com.walkbuddy.ui.components.TabGlyph
 import com.walkbuddy.ui.components.WbBottomBar
@@ -82,6 +86,24 @@ class ScreensTest {
             WbRail(navItems, 0) {}
             Box(Modifier.weight(1f)) {
                 HomeContent(Fixtures.home(), "Good evening, Aarav", wide = true, locationGranted = true, burst = false, onBurstDone = {}, a = HomeActions())
+            }
+        }
+    }
+
+    /** The launcher icon as a circle mask would show it, the splash on light and black, and the app-bar glyphs. */
+    @Test fun brand_light() = paparazzi.shot("brand", Look.Light, 1500) {
+        androidx.compose.foundation.layout.Column(Modifier.padding(24.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(24.dp)) {
+            Box(Modifier.size(216.dp).clip(androidx.compose.foundation.shape.CircleShape)) {
+                androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.walkbuddy.R.drawable.ic_launcher_background_art), null, Modifier.requiredSize(324.dp).align(androidx.compose.ui.Alignment.Center))
+                androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.walkbuddy.R.drawable.ic_launcher_foreground), null, Modifier.requiredSize(324.dp).align(androidx.compose.ui.Alignment.Center))
+            }
+            Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                Box(Modifier.size(170.dp).background(androidx.compose.ui.graphics.Color(0xFFFBF6F9))) {
+                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.walkbuddy.R.drawable.ic_splash), null, Modifier.fillMaxSize())
+                }
+                Box(Modifier.size(170.dp).background(androidx.compose.ui.graphics.Color.Black)) {
+                    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.walkbuddy.R.drawable.ic_splash), null, Modifier.fillMaxSize())
+                }
             }
         }
     }

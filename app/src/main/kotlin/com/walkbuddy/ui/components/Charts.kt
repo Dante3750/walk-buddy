@@ -128,7 +128,7 @@ fun MonthHeatmap(model: MonthGridModel, monthLabel: String, dayLabel: (Long) -> 
                 drawText(layout, topLeft = Offset(x + (cell - layout.size.width) / 2f, y + (cell - layout.size.height) / 2f))
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Fewer steps", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             levelColors.forEach { Box(Modifier.size(14.dp).background(it, RoundedCornerShape(4.dp))) }
             Text("More", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1,16 +1,28 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- a ring that is almost closed, with two footprints walking inside it -->
+    <!-- a progress ring that is almost closed, and two walkers side by side inside it -->
     <path
         android:pathData="M54,26 A28,28 0 1 1 26,54"
-        android:strokeColor="#FF6B5E"
-        android:strokeWidth="6"
-        android:strokeLineCap="round" />
-    <path android:fillColor="#FFB347" android:pathData="M45,42a5,7 0,1 0,0.01 0z" />
-    <path android:fillColor="#FFB347" android:pathData="M45,54a3.5,3.5 0,1 0,0.01 0z" />
-    <path android:fillColor="#FF6B8A" android:pathData="M63,50a5,7 0,1 0,0.01 0z" />
-    <path android:fillColor="#FF6B8A" android:pathData="M63,62a3.5,3.5 0,1 0,0.01 0z" />
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="26"
+                android:startY="26"
+                android:endX="82"
+                android:endY="82">
+                <item android:offset="0" android:color="#FFFFC46B" />
+                <item android:offset="0.55" android:color="#FFFF7A6E" />
+                <item android:offset="1" android:color="#FFFF5C9E" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M46,54m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0" />
+    <path android:fillColor="#FFFFC46B" android:pathData="M62,54m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0" />
 </vector>
