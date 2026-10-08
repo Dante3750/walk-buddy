@@ -1,5 +1,31 @@
 # Changelog
 
+## alpha 1.8 (1.8.0-alpha)
+
+Partner link rewrite, Track view, Walks together history, map fixes and a bug hunt. Compiled and tested on CI (domain 408 tests, server 60 tests); nothing was run on a phone.
+
+Root causes found (alpha 1.7 behaviour):
+
+- Link drops: only two STUN servers; the channel's `open` flag was never set again after a drop; no ICE restart, watchdog or network-change handling; the server's `peer-left` disposed a healthy direct channel; signalling reconnects gave up after 6 tries; there was no second path.
+- "The map does not work": a 30 m accuracy gate dropped weak or approximate fixes, so there was no dot and nothing was shared; the buddy's position was erased whenever the link dropped; a 60 m display limit hid most dots; follow-me stayed at world zoom; approximate-only location permission was treated as denied; GPS and network providers were only requested on plan changes; an empty map gave no explanation.
+
+What changed:
+
+- Layered link: direct WebRTC with ICE restart, more STUN servers, continual gathering, watchdog with backoff and jitter, network-change restart; automatic hot-standby relay through the server with sequence numbers and de-duplication; link indicator (Direct, Via server, Reconnecting...) and last-seen age; walks always recorded locally. Server version 2: `pdata` relay, session keys, avatar codes, `/health` shows `v:2`.
+- New domain code with tests: `LinkQuality`, `LinkWatchdog`, `LinkRoute`, `SeqGate`, track layout and camera, track builders, polyline, shared-walk recorder, codec, replay, history grouping and export.
+- Track view with original walkers (boy, girl, neutral; choose avatar and colour in Settings or the lobby), Track / Map / Overview switch.
+- Walks together: new Room table (database 3 to 4 with a migration), history by month, detail with replay, delete and clear, GPX and JSON export, from Home and Settings.
+- Map: fixes above, a notice card that says why the map is empty and how to fix it.
+
+Notable bug fixes:
+
+- Group walks lost their saved route because the recorder was cleared before the async save.
+- `!!` and `lateinit` risks removed in the peer link, notices, map labels and lobby.
+- Back button: leaving a lobby, moving a running walk to the background and finishing from the summary now behave predictably.
+- Deleting all data also clears saved shared walks.
+
+Not verified: any device behaviour, the migration on a real older database, relay behaviour between two real phones on strict NAT. A walk is not restored if Android kills the app mid-walk. The server must redeploy (Render auto-deploys from main): check https://walk-buddy-server-sxpz.onrender.com/health shows `"v":2`.
+
 ## alpha 1.7 (1.7.0-alpha)
 
 Battery and resource audit of the whole app, then fixes. No device was available: every claim below comes from reading the code and Android's power documentation, none is measured.

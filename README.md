@@ -14,7 +14,7 @@ A native Android app for evening walks with a partner, or an open group of up to
 
 </div>
 
-> **Honest status (alpha 1.4):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, WebRTC pairing, QR scanning, the widget and the Android 16 live update are untested on a device. See [Privacy and honest limitations](#privacy-and-honest-limitations).
+> **Honest status (alpha 1.8):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, WebRTC pairing, QR scanning, the widget and the Android 16 live update are untested on a device. See [Privacy and honest limitations](#privacy-and-honest-limitations).
 
 ## Why
 
@@ -30,7 +30,9 @@ Walking is better with someone, but most step apps are built for streaks and lea
 **Partner mode** (2 people, phone to phone)
 - Pair by code, link or QR. Live distance, ahead or behind, pace zone, a "together" score and soft catch-up nudges (with cooldowns, so they never spam).
 - Couple extras: walk dates, "Our week", shared odometer milestones, quick reactions, anniversary countdown, favourite spots.
-- Live data goes over an encrypted WebRTC data channel; the server only introduces the two phones.
+- Live data goes over an encrypted WebRTC data channel when a direct path exists; otherwise a few tiny updates are relayed through the server (see [How the partner link works](#how-the-partner-link-works)). A small indicator says **Direct**, **Via server** or **Reconnecting...** and how long ago your buddy was last seen.
+- **Track view** (the default on the live screen): a metro-line picture with one lane per walker, your chosen boy, girl or neutral walker and colour, movement proportional to real distance, a gap indicator, a station every kilometre, a glow when you are together, and gentle cues for who is leading or catching up. It redraws at a low rate and stands still with Reduce motion or Battery saver. Switch between Track, Map and Overview.
+- **Walks together** (Home and Settings): every finished partner or group walk is saved on your phone, grouped by month, with a detail page, a Track replay, delete or clear all, and GPX or JSON export. Nothing about it leaves your phone.
 
 **Open group walks** (up to about 50, with QR join)
 - Create a group: optional host approval, time limit (1 to 8 h), optional shared step goal, meeting point.
@@ -52,6 +54,17 @@ Walking is better with someone, but most step apps are built for streaks and lea
 - Your data lives on your phone: CSV export and delete-all in Settings.
 
 **Around the system:** Glance home-screen widget, Quick Settings tile, shortcuts, edge-to-edge, predictive back, tablet layouts, light, dark (true black) and optional dynamic colour, English and Hindi system strings.
+
+## How the partner link works
+
+Two layers run at once, so a walk with someone far away does not fall apart when one path fails:
+
+1. **Direct (preferred).** A WebRTC data channel between the phones with several public STUN servers, all candidate types, continual candidate gathering and an ICE restart when the path breaks. A watchdog repairs a down link with a grace period, then exponential backoff with jitter, and rebuilds the connection from scratch every few failed restarts. A change of network (Wi-Fi to mobile data) triggers a restart straight away.
+2. **Via the server (hot standby).** The room on the Walk Buddy server also relays tiny messages (position, hello, pins, reactions, a short day summary), a thin trickle while the direct link is healthy and everything small while it is down. Every message carries a running number, so a copy arriving on both paths is used once and an older copy never overwrites a newer one. The server stores and logs nothing.
+
+Your walk is always recorded on your phone first; a dropped link never loses it. While the link is down the screen keeps your buddy's last position, marked as last seen some time ago. A foreground service keeps the walk alive with the screen off, and the server socket is kept alive with the existing 40 s ping.
+
+**Why there is no TURN relay.** A TURN server relays full media and needs a paid, always-on host with credentials; this app has no accounts and a free sleeping server. The server relay above carries only a few hundred bytes every few seconds, which is all a walk needs. **On strict networks** (carrier-grade or symmetric NAT, some corporate Wi-Fi) the direct channel may never open: the link then shows *Via server* for the whole walk and works the same, just not phone to phone. If the server itself is asleep, the first connection can take up to about a minute.
 
 ## How step counting works
 
@@ -170,7 +183,7 @@ CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:
 - **Where data goes.** Steps, walks, spots and settings stay in a local database (`allowBackup` is off). Partner mode sends live data phone to phone. In an open group your name, steps and a possibly blurred position (exact, about 100 m or about 500 m grid, applied on your phone) go to the server you chose, which relays them to that group and stores nothing. Other members' data is never saved on your phone.
 - **Trust.** Anyone with the code or QR can join an open group unless the host approves each person, so share it only with people you trust. The server operator can see IP addresses and traffic while it passes through; the built-in server is a free personal host; self-host if you need more control. STUN uses Google's public servers by default.
 - **Not tested on a device.** No phone has run this build. GPS behaviour, the foreground service, haptics, QR scanning, map gestures, OSM tiles and WebRTC connectivity are untested.
-- **No TURN relay.** Pairing uses STUN only, by design. Carrier-grade NAT (common on mobile data) and strict corporate Wi-Fi can block direct connections; same Wi-Fi works best.
+- **No TURN relay.** The direct channel uses STUN only, by design. On carrier-grade NAT and strict Wi-Fi it can fail; the walk then runs through the server relay (tiny updates only, nothing stored). Neither path has been tested between two real phones.
 - **Health Connect** (`-PhealthConnect=true`) is optional and currently fails to build in KSP (non-blocking in CI).
 - **Calorie table** values were transcribed from memory of the 2011 Compendium of Physical Activities; verify them against the published tables.
 - **Steps outside walks** are only plausibility-checked; vehicle filtering needs GPS and applies during walks.
@@ -180,7 +193,7 @@ CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:
 ## Roadmap
 
 - First real-device pass: GPS jitter and nudge thresholds, pairing, group walks.
-- Optional TURN configuration for networks that block direct connections.
+- Walk restore after the app process is killed mid-walk (the finished part is not resumed today).
 - BLE heart-rate strap and a walking-steadiness trend (opt-in).
 - Baseline profile, group-screen screenshot tests, full Hindi translation.
 

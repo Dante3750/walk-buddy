@@ -7,7 +7,8 @@ Two jobs, both in memory only: **signaling for partner walks** (below) and **rel
 
 A tiny relay that lets two to four phones find each other. Phones that share a 6-character code exchange WebRTC
 `offer` / `answer` / `ice` messages through it, then talk **directly** over a WebRTC data channel. Steps, pace and
-locations never pass through this server.
+locations never pass through this server **while the direct channel works**. Since server version 2 the same room also
+carries a small standby relay (`pdata`, below) so a walk survives a dropped direct link.
 
 - Node 18+, one dependency (`ws`).
 - Rooms live in memory only, keyed by code. Max 4 peers per room.
@@ -17,7 +18,21 @@ locations never pass through this server.
 - Limits: 20 KB frame, 16 KB payload, per-connection token bucket (burst 60, 20/s), 20 connections and 20 join
   attempts per minute per IP (so codes cannot be guessed quickly), 10 s to join after connecting.
 - Never logs codes, peer ids or payloads. The only log lines are `listening` and `rooms_expired {count}`. `/health`
-  returns `{ok, rooms}` (a number, no codes). This is covered by a test.
+  returns `{ok, rooms, v}` (numbers, no codes; `v:2` means the partner relay below is live). This is covered by a test.
+
+### Partner relay (`pdata`, server version 2)
+
+`{"t":"pdata","data":"<json string>","to":"<id>?"}` forwards a tiny partner message to the other phone(s) in the room as
+`{t:"pdata", from, data}` (never echoed, sender id stamped by the server). Nothing is stored or logged.
+
+- Only these message types in `data`: `hello pos ping spot react day pin unpin bye`. Anything else, bad JSON, a
+  non-object or more than 1200 characters returns `error bad_message`.
+- At least 120 ms between relayed messages per connection (faster ones are dropped quietly). Relay traffic counts as
+  room activity, so a long walk is not expired.
+- Needs a joined pair room (`not_joined` otherwise); group members cannot use it.
+- Optional `key` on `join` (16 to 64 URL-safe characters): the same peer id with the same key takes its slot back at
+  once when a phone's network switches, and the partner is not told it left. A different or missing key still gets
+  `id_taken`. Group `group-join` and `group-create` accept an optional avatar code `av` (0 to 63) shown in rosters.
 
 ## Run
 
