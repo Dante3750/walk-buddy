@@ -138,7 +138,7 @@ class WalkEngine(
             is PeerMessage.Ping -> if (pingIn.tryAcquire(nowMs)) pendingPings.addLast(p.name)
             is PeerMessage.Spot -> pendingSpots.addLast(p.name to FavoriteSpot(msg.name, msg.lat, msg.lon))
             PeerMessage.Bye -> { p.left = true; p.pos = null }
-            is PeerMessage.Unknown -> Unit
+            is PeerMessage.React, is PeerMessage.Daily, is PeerMessage.Unknown -> Unit
         }
     }
 

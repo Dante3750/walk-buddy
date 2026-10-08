@@ -9,6 +9,8 @@ data class DayRecord(
     val vigorousMin: Int = 0,
     val distanceM: Double = 0.0,
     val restDay: Boolean = false,
+    /** A tired day: the goal is lowered (see [GentleDay]) and the streak stays safe. */
+    val gentle: Boolean = false,
 ) {
     /** Moderate-equivalent minutes: vigorous minutes count double, the usual convention in activity guidance. */
     val activeEquivMin: Int get() = moderateMin + 2 * vigorousMin

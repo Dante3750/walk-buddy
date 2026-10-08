@@ -81,6 +81,12 @@ sealed class PeerMessage {
 
     data class Spot(val name: String, val lat: Double, val lon: Double) : PeerMessage() { override val type get() = "spot" }
 
+    /** One of the preset warm reactions (see [Reaction]); no free text travels. */
+    data class React(val id: String) : PeerMessage() { override val type get() = "react" }
+
+    /** My steps today and my goal, so a buddy's avatar can sit at the right place on their ring. */
+    data class Daily(val steps: Int, val goal: Int) : PeerMessage() { override val type get() = "day" }
+
     object Bye : PeerMessage() { override val type get() = "bye" }
 
     /** A well-formed message of a type this version does not know (forward compatibility). */
@@ -120,6 +126,8 @@ object MessageCodec {
                 }
                 is PeerMessage.Ping -> put("ts", m.tMs)
                 is PeerMessage.Spot -> { put("name", m.name); put("lat", m.lat); put("lon", m.lon) }
+                is PeerMessage.React -> put("id", m.id)
+                is PeerMessage.Daily -> { put("steps", m.steps); put("goal", m.goal) }
                 PeerMessage.Bye -> Unit
                 is PeerMessage.Unknown -> Unit
             }
@@ -168,6 +176,16 @@ object MessageCodec {
                 if (lat == null || lon == null || !LatLon(lat, lon).isValid) return DecodeResult.Rejected("bad spot")
                 val name = cleanName(o.str("name"), MAX_SPOT_NAME) ?: return DecodeResult.Rejected("bad spot name")
                 DecodeResult.Ok(PeerMessage.Spot(name, lat, lon))
+            }
+            "react" -> {
+                val r = Reaction.fromId(o.str("id")?.take(24)) ?: return DecodeResult.Rejected("unknown reaction")
+                DecodeResult.Ok(PeerMessage.React(r.id))
+            }
+            "day" -> {
+                val steps = o.int("steps") ?: return DecodeResult.Rejected("bad steps")
+                val goal = o.int("goal") ?: return DecodeResult.Rejected("bad goal")
+                if (steps !in 0..300_000 || goal !in 500..100_000) return DecodeResult.Rejected("bad daily")
+                DecodeResult.Ok(PeerMessage.Daily(steps, goal))
             }
             "bye" -> DecodeResult.Ok(PeerMessage.Bye)
             else -> DecodeResult.Ok(PeerMessage.Unknown(t))
