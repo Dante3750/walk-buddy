@@ -35,11 +35,13 @@ class ProtocolTest {
         assertNull(SessionCode.normalize("ABC!34"))
     }
 
-    @Test fun joinLinkRoundTripWithServer() {
-        val link = JoinLink.build("K7M2QX", "wss://signal.example.org/ws")
+    @Test fun joinLinkRoundTripHasNoServer() {
+        val link = JoinLink.build("K7M2QX")
+        assertEquals("walkbuddy://join/K7M2QX", link)
         val t = JoinLink.parse(link)!!
         assertEquals("K7M2QX", t.code)
-        assertEquals("wss://signal.example.org/ws", t.serverUrl)
+        assertNull(t.serverUrl)
+        assertNull("a server in the link is ignored", JoinLink.parse("walkbuddy://join/K7M2QX?s=wss%3A%2F%2Fevil.example")!!.serverUrl)
     }
 
     @Test fun joinLinkWithoutServerAndBareCode() {
@@ -53,7 +55,7 @@ class ProtocolTest {
         assertNull(JoinLink.parse("walkbuddy://join/SHORT"))
         assertNull(JoinLink.parse(""))
         val t = JoinLink.parse("walkbuddy://join/K7M2QX?s=javascript%3Aalert(1)")!!
-        assertNull("only ws/wss server hints are accepted", t.serverUrl)
+        assertNull("server hints are never honoured", t.serverUrl)
     }
 
     private fun roundTrip(m: PeerMessage): PeerMessage = (MessageCodec.decode(MessageCodec.encode(m)) as DecodeResult.Ok).message

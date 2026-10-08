@@ -1,7 +1,5 @@
 package com.walkbuddy.domain
 
-import java.net.URLDecoder
-import java.net.URLEncoder
 import kotlin.random.Random
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -28,15 +26,13 @@ object SessionCode {
 
 data class JoinTarget(val code: String, val serverUrl: String?)
 
-/** `walkbuddy://join/ABC234?s=wss%3A%2F%2Fexample.org` (server hint optional). */
+/** `walkbuddy://join/ABC234`. A `?s=` server parameter, if present, is ignored: the server is built in. */
 object JoinLink {
     const val SCHEME = "walkbuddy"
     private const val PREFIX = "$SCHEME://join/"
 
-    fun build(code: String, serverUrl: String? = null): String {
-        val base = PREFIX + code
-        return if (serverUrl.isNullOrBlank()) base else base + "?s=" + URLEncoder.encode(serverUrl, "UTF-8")
-    }
+    /** The server is built in ([ServerConfig]), so it is never part of the link. */
+    fun build(code: String): String = PREFIX + code
 
     /** Accepts a full link or a bare code (with optional spaces/dashes). */
     fun parse(text: String?): JoinTarget? {
@@ -47,15 +43,7 @@ object JoinLink {
         val rest = t.substring(PREFIX.length)
         val codePart = rest.substringBefore('?').trimEnd('/')
         val code = SessionCode.normalize(codePart) ?: return null
-        val query = rest.substringAfter('?', "")
-        var server: String? = null
-        for (kv in query.split('&')) {
-            if (kv.startsWith("s=")) {
-                val v = runCatching { URLDecoder.decode(kv.substring(2), "UTF-8") }.getOrNull()
-                if (v != null && (v.startsWith("wss://") || v.startsWith("ws://")) && v.length <= 200) server = v
-            }
-        }
-        return JoinTarget(code, server)
+        return JoinTarget(code, null)
     }
 }
 

@@ -77,26 +77,17 @@ Android Studio Ladybug (2024.2) or newer, JDK 17+. Open the folder and run `app`
 ./gradlew :app:assembleDebug
 ```
 
-### Run the server
+### The server
 
-Partner pairing and group walks both use one small Node signaling and relay server (one dependency: `ws`).
+The app uses one **built-in server**, `wss://walk-buddy-server-sxpz.onrender.com` ([health](https://walk-buddy-server-sxpz.onrender.com/health)), for partner pairing and open groups. There is no server setting in the app, and an invite link or QR code cannot point the app at another server. The free host sleeps when idle, so the first connection after a break can take up to a minute; the app says "Waking up the server" and retries by itself.
 
-```bash
-# Node 18+
-cd server && npm install && npm start          # listens on :8080
-
-# or Docker
-docker build -t walk-buddy-server server
-docker run -p 8080:8080 walk-buddy-server
-```
-
-Put it behind TLS and enter its `wss://` address in the app (Settings, Signaling server, with a Test connection button). Limits and the privacy note are in [`server/README.md`](server/README.md).
+**Self-hosting:** run the server in [`server/`](server/README.md) (`cd server && npm install && npm start`, or Docker, behind TLS), then change the single constant `ServerConfig.URL` (and `HEALTH_URL`) in `domain/src/main/kotlin/com/walkbuddy/domain/ServerConfig.kt` and rebuild the app. To share a build with friends see [`docs/SHARING.md`](docs/SHARING.md).
 
 ### Join a group walk
 
 1. **Scan:** Home, Open group walk, Join a group, **Scan a QR code**. Camera permission is asked only there.
-2. **Link:** tap a `walkbuddy://group/...` or `https://your-server/g/CODE` link, or paste it into the join screen.
-3. **Code:** type the 6-character code. A bare code does not say which server to use, so the join screen also asks for the server address unless it is saved in Settings.
+2. **Link:** tap a `walkbuddy://group/...` link (or the server's `/g/CODE` page link), or paste it into the join screen.
+3. **Code:** type the 6-character code.
 
 To host: Home, Open group walk, **Create a group**, then share the QR, code or link from the **Invite** tab.
 
@@ -125,13 +116,13 @@ CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:
 ## Privacy and honest limitations
 
 - **Where data goes.** Steps, walks, spots and settings stay in a local database (`allowBackup` is off). Partner mode sends live data phone to phone. In an open group your name, steps and a possibly blurred position (exact, about 100 m or about 500 m grid, applied on your phone) go to the server you chose, which relays them to that group and stores nothing. Other members' data is never saved on your phone.
-- **Trust.** Anyone with the code or QR can join an open group unless the host approves each person, so share it only with people you trust. The server operator can see IP addresses and traffic while it passes through; use your own server or one you trust. STUN uses Google's public servers by default.
+- **Trust.** Anyone with the code or QR can join an open group unless the host approves each person, so share it only with people you trust. The server operator can see IP addresses and traffic while it passes through; the built-in server is a free personal host; self-host if you need more control. STUN uses Google's public servers by default.
 - **Not tested on a device.** No phone has run this build. GPS behaviour, the foreground service, haptics, QR scanning, map gestures, OSM tiles and WebRTC connectivity are untested.
 - **No TURN relay.** Pairing uses STUN only, by design. Carrier-grade NAT (common on mobile data) and strict corporate Wi-Fi can block direct connections; same Wi-Fi works best.
 - **Health Connect** (`-PhealthConnect=true`) is optional and currently fails to build in KSP (non-blocking in CI).
 - **Calorie table** values were transcribed from memory of the 2011 Compendium of Physical Activities; verify them against the published tables.
 - **Steps outside walks** are only plausibility-checked; vehicle filtering needs GPS and applies during walks.
-- A QR code holds an invite of up to about 106 bytes, so a very long server address shows the link and code only.
+- The built-in server is a free host: it sleeps when idle (first connection up to ~1 minute) and has no uptime guarantee.
 - General wellness only: not a medical device, no medical or nutrition advice.
 
 ## Roadmap

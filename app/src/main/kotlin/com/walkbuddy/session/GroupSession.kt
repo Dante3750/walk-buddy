@@ -10,6 +10,7 @@ import com.walkbuddy.data.StepRecorder
 import com.walkbuddy.domain.GroupClientMessage
 import com.walkbuddy.domain.GroupConfig
 import com.walkbuddy.domain.GroupCopy
+import com.walkbuddy.domain.ServerConfig
 import com.walkbuddy.domain.GroupEngine
 import com.walkbuddy.domain.GroupKey
 import com.walkbuddy.domain.GroupLink
@@ -65,7 +66,6 @@ data class CreateGroupOptions(
     val ttlMin: Int = 240,
     val goalSteps: Int = 0,
     val precision: LocationPrecision = LocationPrecision.Exact,
-    val serverUrl: String = "",
 )
 
 data class GroupUi(
@@ -75,7 +75,6 @@ data class GroupUi(
     val code: String? = null,
     val inviteLink: String? = null,
     val webLink: String? = null,
-    val serverUrl: String? = null,
     val connection: SignalingState = SignalingState.Idle,
     /** True once the server has put me in the group (not while waiting for approval or connecting). */
     val joined: Boolean = false,
@@ -127,7 +126,6 @@ class GroupSession(
     private var key = ""
     private var nickname = "Walker"
     private var client: GroupClient? = null
-    private var serverUrl: String? = null
     private var code: String? = null
     private var createOptions: CreateGroupOptions? = null
     private var engine: GroupEngine? = null
@@ -148,7 +146,7 @@ class GroupSession(
         if (_ui.value.phase != GroupPhase.Idle) return
         _ui.value = GroupUi(phase = GroupPhase.Active, iAmHost = true) // active right away, before settings are read
         scope.launch {
-            begin(opts.nickname, opts.serverUrl, opts.precision)
+            begin(opts.nickname, opts.precision)
             createOptions = opts
             code = null
             _ui.update { it.copy(iAmHost = true, settings = GroupSettings(opts.approval, opts.goalSteps, opts.title.trim().take(40))) }
@@ -157,14 +155,14 @@ class GroupSession(
     }
 
     /** [codeOrLink] is a group link (QR or pasted) or a bare 6-character code. */
-    fun join(codeOrLink: String, nicknameIn: String, serverOverride: String?, precisionIn: LocationPrecision) {
+    fun join(codeOrLink: String, nicknameIn: String, precisionIn: LocationPrecision) {
         if (_ui.value.phase != GroupPhase.Idle) return
         val invite = Invites.parse(codeOrLink) as? Invite.Group
         val c = invite?.code ?: SessionCode.normalize(codeOrLink)
         if (c == null) { _ui.value = GroupUi(phase = GroupPhase.Summary, endedReason = GroupCopy.error("bad_code")); return }
         _ui.value = GroupUi(phase = GroupPhase.Active, code = c)
         scope.launch {
-            begin(nicknameIn, serverOverride?.takeIf { it.isNotBlank() } ?: invite?.serverUrl.orEmpty(), precisionIn)
+            begin(nicknameIn, precisionIn)
             code = c
             createOptions = null
             _ui.update { it.copy(code = c) }
@@ -172,28 +170,23 @@ class GroupSession(
         }
     }
 
-    private suspend fun begin(nick: String, serverHint: String, prec: LocationPrecision) {
+    private suspend fun begin(nick: String, prec: LocationPrecision) {
         settings = settingsStore.current()
         selfId = settingsStore.ensurePeerId()
         key = GroupKey.generate(SecureRandom().asKotlinRandom())
         nickname = nick.trim().ifBlank { settings.displayName.ifBlank { "Walker" } }.take(24)
         precision = prec
-        serverUrl = serverHint.trim().ifBlank { settings.serverUrl.trim() }.takeIf { it.isNotBlank() }
         reconnects = 0; ending = false; goalCelebrated = false; sweeperSelf = false
         requests.clear()
         engine = null
         route = if (settings.saveRoutes) RouteRecorder() else null
         _ui.value = GroupUi(
-            phase = GroupPhase.Active, serverUrl = serverUrl, precision = prec, quiet = settings.quietByDefault,
-            note = if (serverUrl == null) "Add a server address to start or join a group." else null,
+            phase = GroupPhase.Active, precision = prec, quiet = settings.quietByDefault,
         )
-        if (serverUrl == null) {
-            _ui.update { it.copy(connection = SignalingState.Failed) }
-        }
     }
 
     private fun connect() {
-        val url = serverUrl ?: return
+        val url = ServerConfig.URL
         client?.close()
         client = GroupClient(
             handleMessage = { m -> scope.launch { onMessage(m) } },
@@ -203,7 +196,17 @@ class GroupSession(
 
     private fun onConnection(s: SignalingState, msg: String?) {
         if (ending || _ui.value.phase != GroupPhase.Active) return
-        _ui.update { it.copy(connection = s, note = if (s == SignalingState.Failed) (msg ?: "Connection problem") else if (s == SignalingState.Connected) null else it.note) }
+        _ui.update {
+            it.copy(
+                connection = s,
+                note = when (s) {
+                    SignalingState.Failed -> if (reconnects < 8) ServerConfig.RETRY_NOTE else (msg ?: "Connection problem")
+                    SignalingState.Connecting -> if (it.joined) it.note else ServerConfig.WAKING_NOTE
+                    SignalingState.Connected -> null
+                    else -> it.note
+                },
+            )
+        }
         when (s) {
             SignalingState.Connected -> {
                 reconnects = 0
@@ -288,11 +291,10 @@ class GroupSession(
 
     private fun onJoined(m: GroupServerMessage.Joined, now: Long) {
         code = m.code
-        val server = serverUrl
         _ui.update {
             it.copy(
                 joined = true, waitingForApproval = false, code = m.code, iAmHost = m.host == selfId,
-                inviteLink = GroupLink.build(m.code, server), webLink = server?.let { s -> GroupLink.webLink(m.code, s) },
+                inviteLink = GroupLink.build(m.code), webLink = GroupLink.webLink(m.code),
                 settings = m.settings, roster = m.roster, expiresAtMs = now + m.expiresInSec * 1000L, hostAway = false,
                 connection = SignalingState.Connected, note = null,
             )

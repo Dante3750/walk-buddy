@@ -236,7 +236,7 @@ fun HomeScreen(
                     is Invite.Group -> TextButton(onClick = {
                         vm.pendingJoin.value = null
                         val precision = settings?.groupPrecision ?: LocationPrecision.Exact
-                        withLocation { vm.joinGroup(link, nick, null, precision) }
+                        withLocation { vm.joinGroup(link, nick, precision) }
                     }) { Text("Join") }
                     is Invite.Partner -> TextButton(onClick = { vm.pendingJoin.value = null; withLocation { vm.startLobby(link) } }) { Text("Join") }
                 }

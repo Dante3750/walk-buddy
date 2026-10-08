@@ -224,8 +224,8 @@ private fun WaitingContent(ui: GroupUi, a: GroupActions) {
             }
             Text(
                 when (ui.connection) {
-                    SignalingState.Failed -> ui.note ?: "Having trouble reaching the server. Retrying."
-                    SignalingState.Connecting -> "Connecting to the server..."
+                    SignalingState.Failed -> ui.note ?: com.walkbuddy.domain.ServerConfig.RETRY_NOTE
+                    SignalingState.Connecting -> com.walkbuddy.domain.ServerConfig.WAKING_NOTE
                     SignalingState.Connected -> if (ui.waitingForApproval) "Request sent." else "Connected. Joining..."
                     SignalingState.Idle -> ui.note ?: "Starting..."
                 },
@@ -491,7 +491,7 @@ private fun GroupInviteTab(ui: GroupUi, w: GroupState?, a: GroupActions) {
                 }
                 Disclaimer("Anyone can scan this to join, even while the group is walking. Or share the link or the code.")
             } else {
-                Disclaimer("Share the link or the code. (This server address is too long for a QR code.)")
+                Disclaimer("Share the link or the code. (Too long for a QR code.)")
             }
             if (link != null) {
                 Button(

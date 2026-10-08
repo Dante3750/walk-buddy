@@ -94,8 +94,6 @@ fun GroupCreateContent(s: Settings?, onBack: () -> Unit, onCreate: (CreateGroupO
     var hours by remember { mutableStateOf(4) }
     var goal by remember { mutableStateOf(0) }
     var precision by remember(s.groupPrecision) { mutableStateOf(s.groupPrecision) }
-    var server by remember(s.serverUrl) { mutableStateOf(s.serverUrl) }
-    val serverOk = server.trim().let { it.startsWith("wss://") || it.startsWith("ws://") }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle("Create a group walk", subtitle = "Anyone you invite can join, even after you have started.")
@@ -123,22 +121,13 @@ fun GroupCreateContent(s: Settings?, onBack: () -> Unit, onCreate: (CreateGroupO
         SectionCard("Privacy") {
             PrecisionPicker(precision) { precision = it }
         }
-        SectionCard("Server") {
-            Text("Open groups relay live updates through a server. Enter the address of one you trust, or run your own (see the server folder in the project).", style = MaterialTheme.typography.bodyMedium)
-            OutlinedTextField(
-                value = server, onValueChange = { server = it.take(200) }, label = { Text("wss://your-server.example") }, singleLine = true,
-                isError = server.isNotBlank() && !serverOk, modifier = Modifier.fillMaxWidth(),
-                supportingText = { if (server.isNotBlank() && !serverOk) Text("Start with wss:// (or ws:// for a test on your own network)") },
-            )
-            Disclaimer("The server passes your position on to the group while you walk. It does not store it.")
-        }
+        Disclaimer("The group's server passes your position on to the group while you walk. It does not store it. It sleeps when idle, so the first start can take up to a minute.")
         Button(
-            enabled = serverOk,
             onClick = {
                 onCreate(
                     CreateGroupOptions(
                         nickname = nick.trim().ifBlank { "Host" }, title = title.trim(), approval = approval, ttlMin = hours * 60,
-                        goalSteps = goal, precision = precision, serverUrl = server.trim(),
+                        goalSteps = goal, precision = precision,
                     ),
                 )
             },
@@ -159,8 +148,8 @@ fun GroupJoinScreen(vm: AppViewModel, initial: String, onScan: () -> Unit, onBac
     val ask = rememberPermissionRequester(perms) { pending?.invoke(); pending = null }
     GroupJoinContent(
         s = s, initial = initial, onScan = onScan, onBack = onBack,
-        onJoin = { input, nick, server, precision ->
-            val go = { vm.joinGroup(input, nick, server, precision) }
+        onJoin = { input, nick, precision ->
+            val go = { vm.joinGroup(input, nick, precision) }
             if (perms.location) go() else { pending = go; ask(PermState.LOCATION) }
         },
     )
@@ -169,19 +158,16 @@ fun GroupJoinScreen(vm: AppViewModel, initial: String, onScan: () -> Unit, onBac
 @Composable
 fun GroupJoinContent(
     s: Settings?, initial: String, onScan: () -> Unit, onBack: () -> Unit,
-    onJoin: (input: String, nickname: String, server: String?, precision: LocationPrecision) -> Unit,
+    onJoin: (input: String, nickname: String, precision: LocationPrecision) -> Unit,
 ) {
     if (s == null) { EmptyState("Loading", "One moment."); return }
     var input by remember(initial) { mutableStateOf(initial) }
     var nick by remember(s.displayName) { mutableStateOf(s.displayName) }
     var precision by remember(s.groupPrecision) { mutableStateOf(s.groupPrecision) }
-    var server by remember(s.serverUrl) { mutableStateOf(s.serverUrl) }
     val parsed = Invites.parse(input)
     val bare = Invites.bareCode(input)
     val isPartnerLink = parsed is Invite.Partner
     val valid = parsed is Invite.Group || (parsed == null && bare != null)
-    val needsServer = (parsed as? Invite.Group)?.serverUrl == null && s.serverUrl.isBlank()
-    val serverOk = !needsServer || server.trim().let { it.startsWith("wss://") || it.startsWith("ws://") }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle("Join a group walk", subtitle = "Scan the QR code, paste the invite link, or type the 6-character code.")
@@ -198,18 +184,11 @@ fun GroupJoinContent(
                 },
             )
             OutlinedTextField(value = nick, onValueChange = { nick = it.take(24) }, label = { Text("Your name in the group") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            if (needsServer) {
-                OutlinedTextField(
-                    value = server, onValueChange = { server = it.take(200) }, label = { Text("Server, for example wss://your-server.example") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Disclaimer("A bare code does not say which server the group is on. Links and QR codes do.")
-            }
         }
         SectionCard("Privacy") { PrecisionPicker(precision) { precision = it } }
         Button(
-            enabled = valid && serverOk,
-            onClick = { onJoin(input.trim(), nick.trim().ifBlank { "Walker" }, server.trim().takeIf { needsServer && it.isNotBlank() }, precision) },
+            enabled = valid,
+            onClick = { onJoin(input.trim(), nick.trim().ifBlank { "Walker" }, precision) },
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         ) { Text("Join group", style = MaterialTheme.typography.titleMedium) }
         OutlinedButton(onClick = onBack, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Back") }

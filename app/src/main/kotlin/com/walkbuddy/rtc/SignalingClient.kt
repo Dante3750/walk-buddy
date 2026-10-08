@@ -2,6 +2,7 @@ package com.walkbuddy.rtc
 
 import com.walkbuddy.domain.SignalingCodec
 import com.walkbuddy.domain.SignalingMessage
+import com.walkbuddy.domain.ServerConfig
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,12 +22,14 @@ class SignalingClient(
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(25, TimeUnit.SECONDS)
-        .connectTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(ServerConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        .readTimeout(ServerConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
         .build()
     private var socket: WebSocket? = null
     @Volatile private var closedByUs = false
 
-    fun connect(url: String) {
+    /** Always connects to the built-in server ([ServerConfig.URL]). */
+    fun connect(url: String = ServerConfig.URL) {
         closedByUs = false
         handleState(SignalingState.Connecting, null)
         val request = try {
@@ -61,30 +64,5 @@ class SignalingClient(
         socket?.close(1000, "bye")
         socket = null
         handleState(SignalingState.Idle, null)
-    }
-
-    companion object {
-        /** One-shot reachability check for Settings > Test connection. Returns null on success or a short message. */
-        fun test(url: String, timeoutMs: Long = 6000, done: (String?) -> Unit) {
-            val client = OkHttpClient.Builder().connectTimeout(timeoutMs, TimeUnit.MILLISECONDS).build()
-            val req = try {
-                Request.Builder().url(url.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://")).build()
-            } catch (e: IllegalArgumentException) {
-                done("That server address is not valid")
-                return
-            }
-            var finished = false
-            fun finish(msg: String?) { synchronized(this) { if (finished) return; finished = true }; done(msg) }
-            client.newWebSocket(req, object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    webSocket.close(1000, "test")
-                    finish(null)
-                }
-
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    finish("Could not connect (${t.javaClass.simpleName})")
-                }
-            })
-        }
     }
 }

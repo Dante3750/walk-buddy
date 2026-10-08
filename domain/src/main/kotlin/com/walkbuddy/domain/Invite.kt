@@ -1,12 +1,11 @@
 package com.walkbuddy.domain
 
-import java.net.URLDecoder
-import java.net.URLEncoder
 import kotlin.random.Random
 
 /** What a scanned QR code, a tapped link or a pasted line turned out to be. */
 sealed class Invite {
     abstract val code: String
+    /** Always null: the server is built in ([ServerConfig]); kept so older call sites keep compiling. */
     abstract val serverUrl: String?
 
     /** A private two-person (partner) walk, `walkbuddy://join/CODE`. */
@@ -19,40 +18,20 @@ sealed class Invite {
 /**
  * Open-group invite links.
  *
- * - `walkbuddy://group/K7M2QX` (server from the app's settings)
- * - `walkbuddy://group/K7M2QX?s=walk.example.org` (bare host means `wss://host`)
- * - `walkbuddy://group/K7M2QX?s=ws://192.168.1.5:8080` (explicit scheme, for a LAN test server)
- * - `https://walk.example.org/g/K7M2QX` (the server's landing page; the host becomes `wss://host`)
+ * - `walkbuddy://group/K7M2QX` (the server is built in; a `?s=` parameter is ignored)
+ * - `https://<built-in host>/g/K7M2QX` (the server's landing page; links on any other host are rejected)
  *
  * The compact form keeps the QR code small: a payload stays far below [QrEncoder.MAX_BYTES].
  */
 object GroupLink {
     const val SCHEME = "walkbuddy"
     private const val PREFIX = "$SCHEME://group/"
-    private val HOST_RE = Regex("^[A-Za-z0-9.-]{1,100}(:\\d{1,5})?$")
 
-    fun build(code: String, serverUrl: String? = null): String {
-        val base = PREFIX + code
-        val s = serverUrl?.trim().orEmpty()
-        return when {
-            s.isEmpty() -> base
-            s.startsWith("wss://") && HOST_RE.matches(s.removePrefix("wss://").trimEnd('/')) -> base + "?s=" + s.removePrefix("wss://").trimEnd('/')
-            s.startsWith("ws://") && HOST_RE.matches(s.removePrefix("ws://").trimEnd('/')) -> base + "?s=" + s.trimEnd('/')
-            else -> base + "?s=" + URLEncoder.encode(s, "UTF-8")
-        }
-    }
+    /** The compact link: the server is built in, so it is never part of the payload (smaller QR). */
+    fun build(code: String): String = PREFIX + code
 
     /** The https page a chat app can linkify (served by the Walk Buddy server). */
-    fun webLink(code: String, serverUrl: String): String? {
-        val s = serverUrl.trim().trimEnd('/')
-        val (scheme, host) = when {
-            s.startsWith("wss://") -> "https" to s.removePrefix("wss://")
-            s.startsWith("ws://") -> "http" to s.removePrefix("ws://")
-            else -> return null
-        }
-        if (!HOST_RE.matches(host)) return null
-        return "$scheme://$host/g/$code"
-    }
+    fun webLink(code: String): String = "${ServerConfig.WEB_BASE}/g/$code"
 
     /** Link text fits a QR code produced by [QrEncoder]. */
     fun fitsQr(link: String): Boolean = link.toByteArray(Charsets.UTF_8).size <= QrEncoder.MAX_BYTES
@@ -63,23 +42,13 @@ object GroupLink {
         if (t.startsWith(PREFIX, ignoreCase = true)) {
             val rest = t.substring(PREFIX.length)
             val code = SessionCode.normalize(rest.substringBefore('?').trimEnd('/')) ?: return null
-            return Invite.Group(code, serverParam(rest.substringAfter('?', "")))
+            return Invite.Group(code, null)
         }
-        val web = Regex("^(https?)://([A-Za-z0-9.-]{1,100}(?::\\d{1,5})?)/g/([A-Za-z0-9]{6})/?(?:\\?.*)?$", RegexOption.IGNORE_CASE).matchEntire(t) ?: return null
-        val code = SessionCode.normalize(web.groupValues[3]) ?: return null
-        val ws = if (web.groupValues[1].equals("https", true)) "wss://" else "ws://"
-        return Invite.Group(code, ws + web.groupValues[2])
-    }
-
-    private fun serverParam(query: String): String? {
-        for (kv in query.split('&')) {
-            if (!kv.startsWith("s=")) continue
-            val v = runCatching { URLDecoder.decode(kv.substring(2), "UTF-8") }.getOrNull()?.trim() ?: return null
-            if (v.length > 200 || v.isEmpty()) return null
-            if (v.startsWith("wss://") || v.startsWith("ws://")) return v.trimEnd('/')
-            return if (HOST_RE.matches(v)) "wss://$v" else null
-        }
-        return null
+        // The server's own landing page link. Any other host is rejected: an invite can't point the app elsewhere.
+        val web = Regex("^https://([A-Za-z0-9.-]{1,100})/g/([A-Za-z0-9]{6})/?(?:\\?.*)?$", RegexOption.IGNORE_CASE).matchEntire(t) ?: return null
+        if (!web.groupValues[1].equals(ServerConfig.HOST, ignoreCase = true)) return null
+        val code = SessionCode.normalize(web.groupValues[2]) ?: return null
+        return Invite.Group(code, null)
     }
 }
 

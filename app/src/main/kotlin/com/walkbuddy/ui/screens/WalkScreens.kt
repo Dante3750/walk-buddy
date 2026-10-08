@@ -187,12 +187,12 @@ fun LobbyContent(ui: SessionUi, a: WalkActions) {
             SectionCard("Who is here") {
                 val statusText = when (ui.signaling) {
                     SignalingState.Idle -> "Not connected"
-                    SignalingState.Connecting -> "Connecting to the signaling server..."
+                    SignalingState.Connecting -> com.walkbuddy.domain.ServerConfig.WAKING_NOTE
                     SignalingState.Connected -> "Waiting for buddies to join"
-                    SignalingState.Failed -> "Having trouble reaching the server. Retrying."
+                    SignalingState.Failed -> com.walkbuddy.domain.ServerConfig.RETRY_NOTE
                 }
                 Text(statusText, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ui.note?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                ui.note?.takeIf { it != com.walkbuddy.domain.ServerConfig.RETRY_NOTE && it != com.walkbuddy.domain.ServerConfig.WAKING_NOTE }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (ui.peers.isEmpty()) {
                     Text("Nobody yet. You can start walking now and they can still join.", style = MaterialTheme.typography.bodyMedium)
                 } else {

@@ -39,7 +39,6 @@ data class Settings(
     val calibratedStepLengthM: Double? = null,
     val foodEnabled: Boolean = false,
     val diet: Diet = Diet.Vegetarian,
-    val serverUrl: String = "",
     val radiusM: Int = 50,
     val quietByDefault: Boolean = false,
     val paceSync: Boolean = false,
@@ -95,7 +94,6 @@ class SettingsStore(private val context: Context) {
         val stepLen = floatPreferencesKey("step_length_m")
         val food = booleanPreferencesKey("food_enabled")
         val diet = stringPreferencesKey("diet")
-        val server = stringPreferencesKey("server_url")
         val radius = intPreferencesKey("radius_m")
         val quiet = booleanPreferencesKey("quiet_default")
         val paceSync = booleanPreferencesKey("pace_sync")
@@ -145,7 +143,6 @@ class SettingsStore(private val context: Context) {
             calibratedStepLengthM = p[K.stepLen]?.toDouble(),
             foodEnabled = p[K.food] ?: false,
             diet = runCatching { Diet.valueOf(p[K.diet] ?: "") }.getOrDefault(Diet.Vegetarian),
-            serverUrl = p[K.server].orEmpty(),
             radiusM = p[K.radius] ?: 50,
             quietByDefault = p[K.quiet] ?: false,
             paceSync = p[K.paceSync] ?: false,
@@ -212,7 +209,6 @@ class SettingsStore(private val context: Context) {
     }
     suspend fun setFood(on: Boolean) = context.settingsDataStore.edit { it[K.food] = on }.let { }
     suspend fun setDiet(d: Diet) = context.settingsDataStore.edit { it[K.diet] = d.name }.let { }
-    suspend fun setServer(url: String) = context.settingsDataStore.edit { it[K.server] = url.trim() }.let { }
     suspend fun setRadius(m: Int) = context.settingsDataStore.edit { it[K.radius] = m.coerceIn(10, 500) }.let { }
     suspend fun setQuietDefault(on: Boolean) = context.settingsDataStore.edit { it[K.quiet] = on }.let { }
     suspend fun setPaceSync(on: Boolean) = context.settingsDataStore.edit { it[K.paceSync] = on }.let { }

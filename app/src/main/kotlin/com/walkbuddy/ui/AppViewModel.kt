@@ -58,7 +58,6 @@ import com.walkbuddy.domain.WeeklyRecapBuilder
 import com.walkbuddy.domain.WeeklyReport
 import com.walkbuddy.notify.Notifications
 import com.walkbuddy.notify.WidgetBridge
-import com.walkbuddy.rtc.SignalingClient
 import com.walkbuddy.session.CreateGroupOptions
 import com.walkbuddy.session.GroupUi
 import com.walkbuddy.session.SessionUi
@@ -376,7 +375,7 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     fun onResume() { clockTick.update { it + 1 } }
 
     fun startLobby(codeOrLink: String?, solo: Boolean = false) {
-        c.session.openLobby(codeOrLink, null, solo)
+        c.session.openLobby(codeOrLink, solo)
         WalkService.start(appContext)
     }
 
@@ -386,14 +385,14 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
 
     // ---- open groups ----
     fun createGroup(opts: CreateGroupOptions) {
-        saveSettings { setName(opts.nickname); setGroupPrecision(opts.precision); if (opts.serverUrl.isNotBlank()) setServer(opts.serverUrl) }
+        saveSettings { setName(opts.nickname); setGroupPrecision(opts.precision) }
         c.groupSession.create(opts)
         WalkService.start(appContext)
     }
 
-    fun joinGroup(codeOrLink: String, nickname: String, serverOverride: String?, precision: com.walkbuddy.domain.LocationPrecision) {
+    fun joinGroup(codeOrLink: String, nickname: String, precision: com.walkbuddy.domain.LocationPrecision) {
         saveSettings { setName(nickname); setGroupPrecision(precision) }
-        c.groupSession.join(codeOrLink, nickname, serverOverride, precision)
+        c.groupSession.join(codeOrLink, nickname, precision)
         WalkService.start(appContext)
     }
 
@@ -491,7 +490,6 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         viewModelScope.launch { c.settings.setStepLength(len); done("Step length set to ${"%.2f".format(len)} m") }
     }
 
-    fun testServer(url: String, done: (String?) -> Unit) = SignalingClient.test(url, done = done)
 
     suspend fun exportText(): String = c.repository.exportCsv()
 

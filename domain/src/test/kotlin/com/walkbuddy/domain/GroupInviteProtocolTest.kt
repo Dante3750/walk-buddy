@@ -19,23 +19,19 @@ class GroupInviteTest {
         assertEquals(Invite.Group("K7M2QX", null), GroupLink.parse(link))
     }
 
-    @Test fun secureServerIsWrittenAsABareHost() {
-        val link = GroupLink.build("K7M2QX", "wss://walk.example.org")
-        assertEquals("walkbuddy://group/K7M2QX?s=walk.example.org", link)
-        assertEquals(Invite.Group("K7M2QX", "wss://walk.example.org"), GroupLink.parse(link))
+    @Test fun aServerInTheLinkIsIgnored() {
+        for (s in listOf("walk.example.org", "wss://walk.example.org", "ws://192.168.1.5:8080", "wss%3A%2F%2Fexample.org%2Fws", ServerConfig.HOST)) {
+            val g = GroupLink.parse("walkbuddy://group/K7M2QX?s=$s")
+            assertEquals(Invite.Group("K7M2QX", null), g)
+        }
     }
 
-    @Test fun plainServerKeepsItsSchemeAndPort() {
-        val link = GroupLink.build("K7M2QX", "ws://192.168.1.5:8080")
-        assertEquals("walkbuddy://group/K7M2QX?s=ws://192.168.1.5:8080", link)
-        assertEquals("ws://192.168.1.5:8080", GroupLink.parse(link)?.serverUrl)
-    }
-
-    @Test fun oddServerAddressesAreEncodedAndStillRoundTrip() {
-        val s = "wss://example.org/path/ws"
-        val link = GroupLink.build("K7M2QX", s)
-        assertTrue(link.contains("%2F"))
-        assertEquals(s, GroupLink.parse(link)?.serverUrl)
+    @Test fun builtInServerIsRecognisedAndOthersAreNot() {
+        assertTrue(ServerConfig.isBuiltIn(ServerConfig.URL))
+        assertTrue(ServerConfig.isBuiltIn(ServerConfig.URL + "/"))
+        assertFalse(ServerConfig.isBuiltIn("wss://walk.example.org"))
+        assertFalse(ServerConfig.isBuiltIn(null))
+        assertTrue(ServerConfig.URL.startsWith("wss://"))
     }
 
     @Test fun parseIsForgivingAboutCaseSpacesAndTrailingSlash() {
@@ -43,39 +39,36 @@ class GroupInviteTest {
         assertEquals("K7M2QX", GroupLink.parse("walkbuddy://group/K7M-2QX")?.code)
     }
 
-    @Test fun webInviteLinkFromTheServerLandingPage() {
-        assertEquals("https://walk.example.org/g/K7M2QX", GroupLink.webLink("K7M2QX", "wss://walk.example.org"))
-        assertEquals("http://10.0.0.2:8080/g/K7M2QX", GroupLink.webLink("K7M2QX", "ws://10.0.0.2:8080"))
-        assertNull(GroupLink.webLink("K7M2QX", "https://nope"))
-        assertEquals(Invite.Group("K7M2QX", "wss://walk.example.org"), GroupLink.parse("https://walk.example.org/g/k7m2qx"))
-        assertEquals(Invite.Group("K7M2QX", "ws://10.0.0.2:8080"), GroupLink.parse("http://10.0.0.2:8080/g/K7M2QX/"))
+    @Test fun webInviteLinkOnlyForTheBuiltInServer() {
+        assertEquals("${ServerConfig.WEB_BASE}/g/K7M2QX", GroupLink.webLink("K7M2QX"))
+        assertEquals(Invite.Group("K7M2QX", null), GroupLink.parse("${ServerConfig.WEB_BASE}/g/k7m2qx"))
+        assertEquals(Invite.Group("K7M2QX", null), GroupLink.parse("${ServerConfig.WEB_BASE}/g/K7M2QX/?x=1"))
+        assertNull("another host must be rejected", GroupLink.parse("https://walk.example.org/g/K7M2QX"))
+        assertNull(GroupLink.parse("http://10.0.0.2:8080/g/K7M2QX"))
+        assertNull(GroupLink.parse("http://${ServerConfig.HOST}/g/K7M2QX"))
     }
 
     @Test fun rejectsGarbage() {
         for (bad in listOf(null, "", "K7M2QX", "walkbuddy://group/", "walkbuddy://group/ABC", "walkbuddy://group/K7M2Q0", "https://x.org/other/K7M2QX",
-            "javascript:alert(1)", "walkbuddy://group/K7M2QX?s=evil host", "walkbuddy://group/K7M2QX?s=" + "a".repeat(300))) {
-            val g = GroupLink.parse(bad)
-            if (bad != null && bad.startsWith("walkbuddy://group/K7M2QX?s=")) assertNull("server must be dropped for $bad", g?.serverUrl)
-            else assertNull("should reject $bad", g)
+            "javascript:alert(1)")) {
+            assertNull("should reject $bad", GroupLink.parse(bad))
         }
     }
 
     @Test fun invitesRouteBetweenPartnerAndGroup() {
         assertTrue(Invites.parse("walkbuddy://group/K7M2QX") is Invite.Group)
-        val p = Invites.parse(JoinLink.build("ABC234", "wss://s.example.org"))
-        assertEquals(Invite.Partner("ABC234", "wss://s.example.org"), p)
+        val p = Invites.parse(JoinLink.build("ABC234") + "?s=wss://evil.example")
+        assertEquals(Invite.Partner("ABC234", null), p)
         assertNull(Invites.parse("K7M2QX")) // a bare code is ambiguous
         assertEquals("K7M2QX", Invites.bareCode(" k7m-2qx "))
         assertNull(Invites.bareCode("hello"))
     }
 
-    @Test fun linksFitInTheQrEncoderAndTheCodeIsReadableBack() {
-        val link = GroupLink.build("K7M2QX", "wss://walk.example.org")
+    @Test fun linksFitInTheQrEncoderAndAreSmall() {
+        val link = GroupLink.build("K7M2QX")
         assertTrue(GroupLink.fitsQr(link))
         val q = QrEncoder.encode(link)
-        assertTrue(q.size in 21..37)
-        // A very long server does not fit; the UI then shows the code only.
-        assertFalse(GroupLink.fitsQr(GroupLink.build("K7M2QX", "wss://" + "a".repeat(60) + ".example.org/" + "b".repeat(20))))
+        assertTrue(q.size in 21..29)
     }
 
     @Test fun groupKeysAreLongRandomAndAlphanumeric() {

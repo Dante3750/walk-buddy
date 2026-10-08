@@ -3,6 +3,7 @@ package com.walkbuddy.rtc
 import com.walkbuddy.domain.GroupClientMessage
 import com.walkbuddy.domain.GroupCodec
 import com.walkbuddy.domain.GroupServerMessage
+import com.walkbuddy.domain.ServerConfig
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -20,12 +21,14 @@ class GroupClient(
 ) {
     private val client = OkHttpClient.Builder()
         .pingInterval(25, TimeUnit.SECONDS)
-        .connectTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(ServerConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        .readTimeout(ServerConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
         .build()
     private var socket: WebSocket? = null
     @Volatile private var closedByUs = false
 
-    fun connect(url: String) {
+    /** Always connects to the built-in server ([ServerConfig.URL]). */
+    fun connect(url: String = ServerConfig.URL) {
         closedByUs = false
         handleState(SignalingState.Connecting, null)
         val request = try {

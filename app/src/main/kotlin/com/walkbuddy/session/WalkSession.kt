@@ -9,6 +9,7 @@ import com.walkbuddy.data.StepRecorder
 import com.walkbuddy.health.HealthBridge
 import com.walkbuddy.notify.Notifications
 import com.walkbuddy.rtc.PeerLink
+import com.walkbuddy.domain.ServerConfig
 import com.walkbuddy.rtc.SignalingClient
 import com.walkbuddy.rtc.SignalingState
 import com.walkbuddy.sensors.LocationSource
@@ -116,7 +117,6 @@ class WalkSession(
     private var link: PeerLink? = null
     private var signaling: SignalingClient? = null
     private var code: String? = null
-    private var serverUrl: String? = null
     private var walkStartMs = 0L
     private var reconnects = 0
     private val names = LinkedHashMap<String, String>()
@@ -136,8 +136,8 @@ class WalkSession(
 
     // ---------- lobby ----------
 
-    /** [rawCodeOrLink] null = create a new session. Blank server and no code = solo walk. */
-    fun openLobby(rawCodeOrLink: String?, serverOverride: String?, solo: Boolean = false) {
+    /** [rawCodeOrLink] null = create a new session. */
+    fun openLobby(rawCodeOrLink: String?, solo: Boolean = false) {
         if (sessionActive) return
         // Mark the session active right away (before the settings are read) so the foreground service never sees "idle" first.
         _ui.value = SessionUi(phase = Phase.Lobby, solo = solo)
@@ -147,19 +147,17 @@ class WalkSession(
             names.clear(); connected.clear(); reconnects = 0
             val target = rawCodeOrLink?.let { JoinLink.parse(it) }
             code = if (solo) null else target?.code ?: SessionCode.generate()
-            serverUrl = (serverOverride ?: target?.serverUrl)?.takeIf { it.isNotBlank() } ?: settings.serverUrl.takeIf { it.isNotBlank() }
             _ui.value = SessionUi(
                 phase = Phase.Lobby, code = code,
-                joinLink = code?.let { JoinLink.build(it, serverUrl) },
+                joinLink = code?.let { JoinLink.build(it) },
                 quiet = settings.quietByDefault, pingEnabled = settings.pingEnabled, showCalories = settings.caloriesEnabled, solo = solo,
-                note = if (!solo && serverUrl == null) "Add a signaling server in Settings to connect with a buddy. You can still walk solo." else null,
             )
-            if (!solo && serverUrl != null) connectSignaling()
+            if (!solo) connectSignaling()
         }
     }
 
     private fun connectSignaling() {
-        val url = serverUrl ?: return
+        val url = ServerConfig.URL
         val c = code ?: return
         link?.close()
         link = PeerLink(
@@ -176,7 +174,17 @@ class WalkSession(
 
     private fun onSignalingState(s: SignalingState, msg: String?, c: String) {
         if (!sessionActive) return
-        _ui.update { it.copy(signaling = s, note = if (s == SignalingState.Failed) (msg ?: "Connection problem") else if (s == SignalingState.Connected) null else it.note) }
+        _ui.update {
+            it.copy(
+                signaling = s,
+                note = when (s) {
+                    SignalingState.Failed -> if (reconnects < 6) ServerConfig.RETRY_NOTE else (msg ?: "Connection problem")
+                    SignalingState.Connecting -> ServerConfig.WAKING_NOTE
+                    SignalingState.Connected -> null
+                    else -> it.note
+                },
+            )
+        }
         when (s) {
             SignalingState.Connected -> {
                 reconnects = 0
@@ -186,7 +194,7 @@ class WalkSession(
                 reconnects++
                 scope.launch {
                     delay(2_000L * reconnects)
-                    if (sessionActive && _ui.value.signaling == SignalingState.Failed) signaling?.let { sc -> serverUrl?.let { sc.connect(it) } }
+                    if (sessionActive && _ui.value.signaling == SignalingState.Failed) signaling?.connect(ServerConfig.URL)
                 }
             }
             else -> Unit

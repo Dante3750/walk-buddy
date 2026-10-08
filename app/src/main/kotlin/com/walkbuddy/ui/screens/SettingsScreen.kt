@@ -65,7 +65,6 @@ import kotlinx.coroutines.withContext
 class SettingsActions(
     val save: (suspend com.walkbuddy.data.SettingsStore.() -> Unit) -> Unit = {},
     val setDemoMode: (Boolean) -> Unit = {},
-    val testServer: (String, (String?) -> Unit) -> Unit = { _, _ -> },
     val calibrate: ((String) -> Unit) -> Unit = {},
     val healthAvailable: ((Boolean) -> Unit) -> Unit = {},
     val onExport: () -> Unit = {},
@@ -92,7 +91,6 @@ fun SettingsScreen(vm: AppViewModel) {
     val actions = SettingsActions(
         save = { vm.saveSettings(it) },
         setDemoMode = { vm.setDemoMode(it) },
-        testServer = { url, done -> vm.testServer(url, done) },
         calibrate = { done -> vm.calibrateStepLength(done) },
         healthAvailable = { done -> vm.healthAvailable(done) },
         onExport = { export.launch("walk-buddy-export.csv") },
@@ -129,7 +127,6 @@ fun SettingsContent(s: Settings?, a: SettingsActions) {
         QuietHoursSection(a, s)
         WalkSection(a, s)
         MapSection(a, s)
-        ServerSection(a, s)
         ExtrasSection(a, s)
         HealthSection(a, s)
         DemoSection(a, s)
@@ -230,39 +227,6 @@ private fun WalkSection(a: SettingsActions, s: Settings) {
         ToggleRow("Quiet mode by default", "Start every walk with nudges muted", s.quietByDefault) { on -> a.save { setQuietDefault(on) } }
         ToggleRow("Pace-sync mode", "The faster partner gets the gentle nudge instead of the one behind", s.paceSync) { on -> a.save { setPaceSync(on) } }
         ToggleRow("'Thinking of you' ping", "A tiny haptic hello to your buddy during a walk. Rate limited.", s.pingEnabled) { on -> a.save { setPing(on) } }
-    }
-}
-
-@Composable
-private fun ServerSection(a: SettingsActions, s: Settings) {
-    var url by remember(s.serverUrl) { mutableStateOf(s.serverUrl) }
-    var result by remember { mutableStateOf<String?>(null) }
-    var testing by remember { mutableStateOf(false) }
-    val ctx = LocalContext.current
-    SectionCard("Signaling server") {
-        Text("Only used to introduce your phones to each other. Steps and locations go directly between phones and never pass through it.", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(
-            value = url, onValueChange = { url = it.take(200) }, label = { Text("wss://your-server.example") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { a.save { setServer(url) } }) { Text("Save") }
-            OutlinedButton(
-                enabled = url.isNotBlank() && !testing,
-                onClick = {
-                    testing = true; result = null
-                    a.testServer(url.trim()) { err ->
-                        // Called from a background thread.
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            testing = false
-                            result = err ?: "Connected. The server answered."
-                        }
-                    }
-                },
-            ) { Text(if (testing) "Testing..." else "Test connection") }
-        }
-        result?.let { Text(it, color = if (it.startsWith("Connected")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
-        Disclaimer("See server/README.md in the project to run your own in a minute.")
     }
 }
 

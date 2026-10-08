@@ -35,8 +35,9 @@ Environment: `PORT`, `HOST`, `TRUST_PROXY=1` (use `X-Forwarded-For` for per-IP l
 
 1. Open https://render.com/deploy?repo=https://github.com/Dante3750/walk-buddy and sign in with GitHub.
 2. Accept the blueprint (`render.yaml`, free plan). Wait for the first deploy to finish.
-3. Your server is `https://walk-buddy-server-XXXX.onrender.com`. In the app use the same address with `wss://`
-   in Settings > Signaling server, then tap Test connection.
+3. Your server is `https://walk-buddy-server-XXXX.onrender.com`. The app has no server setting: set `ServerConfig.URL`
+   (and `HEALTH_URL`) in `domain/src/main/kotlin/com/walkbuddy/domain/ServerConfig.kt` to the same address with `wss://` and rebuild.
+   The official build already points at `wss://walk-buddy-server-sxpz.onrender.com`.
 
 The free plan sleeps after ~15 min idle, so the first connection after a break can take ~30 s.
 
@@ -47,8 +48,9 @@ docker build -t walk-buddy-signaling server
 docker run -p 8080:8080 walk-buddy-signaling
 ```
 
-Put it behind TLS (a reverse proxy, Fly.io, Cloud Run, Render ...) and give the app the `wss://` URL in
-Settings > Signaling server. Plain `ws://` is fine on a trusted LAN for testing. The app has a "Test connection" button.
+Put it behind TLS (a reverse proxy, Fly.io, Cloud Run, Render ...) and set `ServerConfig.URL` in the app source to its `wss://`
+URL, then rebuild. Check it with `curl https://your-host/health`. The app only talks to the server named in that constant;
+invite links cannot override it.
 
 ## Protocol
 

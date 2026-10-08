@@ -1,5 +1,14 @@
 # Changelog
 
+## alpha 1.5 (1.5.0-alpha)
+
+- One built-in server, `wss://walk-buddy-server-sxpz.onrender.com`, held in a single constant (`ServerConfig.URL` in the domain module). It is the only server for partner signaling and open groups.
+- Removed the user-facing "Signaling server" setting (field, Test connection, stored preference) and the server fields on the create/join group screens. Self-hosting means changing the constant and rebuilding.
+- Invite links and QR codes no longer carry a server (smaller QR, 21 to 29 modules). A `?s=` server in a link is ignored; a `/g/CODE` web link on any other host is rejected.
+- The free host sleeps, so connecting shows "Waking up the server, this can take up to a minute..." with a 75 s connect timeout and automatic retries (6 for partner, 8 for groups).
+- Docs: README and server README updated, new `docs/SHARING.md` (build and share a debug APK). CI already uploads the debug APK as the `walk-buddy-debug-apk` artifact.
+- Tests: domain 283 (invite/link tests rewritten for the built-in server), server 49.
+
 ## alpha 1.4 (1.4.0-alpha)
 
 - Home: the two ways to walk are now distinct cards, each with a coloured header band (title, tagline, person glyphs) over the explanation and actions, under a "Walk together" heading.
