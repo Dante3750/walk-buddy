@@ -3,8 +3,6 @@ package com.walkbuddy.rtc
 import com.walkbuddy.domain.SignalingCodec
 import com.walkbuddy.domain.SignalingMessage
 import com.walkbuddy.domain.ServerConfig
-import java.util.concurrent.TimeUnit
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -20,11 +18,7 @@ class SignalingClient(
     private val handleMessage: (SignalingMessage) -> Unit,
     private val handleState: (SignalingState, String?) -> Unit,
 ) {
-    private val client = OkHttpClient.Builder()
-        .pingInterval(25, TimeUnit.SECONDS)
-        .connectTimeout(ServerConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
-        .readTimeout(ServerConfig.CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
-        .build()
+    private val client = Http.webSocket
     private var socket: WebSocket? = null
     @Volatile private var closedByUs = false
 

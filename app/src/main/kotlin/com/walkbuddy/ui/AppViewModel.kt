@@ -76,6 +76,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -132,6 +134,7 @@ data class BadgeRow(val id: BadgeId, val earned: Boolean, val unlockedMs: Long?,
 @Immutable
 data class UsUi(val unit: UnitSystem, val coupleDistanceM: Double, val buddyName: String)
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AppViewModel(private val c: AppContainer, private val appContext: android.content.Context) : ViewModel() {
     val settings: StateFlow<Settings?> = c.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val session: StateFlow<SessionUi> = c.session.ui
@@ -148,18 +151,21 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     private val demoExtra = MutableStateFlow(0)
     private val clockTick = MutableStateFlow(0)
 
+    /** True while the activity is started. Background-only work (demo animation, widget push, badge checks) waits for it. */
+    private val fg = MutableStateFlow(false)
+
     private val dbDays = c.repository.days.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val dbWalks = c.repository.walks.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val dbHours = c.repository.hours.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val dbMoods = c.repository.moods.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val dbHours = c.repository.hours.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val dbMoods = c.repository.moods.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val dbCoupleDays = c.repository.coupleDays.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
     private val dbCoupleDistance = c.repository.coupleDistanceM.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
     private val dbBadges = c.repository.badges.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     private val days: StateFlow<List<DayRecord>> = combine(dbDays, demo) { d, dm -> dm?.days ?: d }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val walks: StateFlow<List<WalkRecord>> = combine(dbWalks, demo) { w, dm -> dm?.walks?.sortedByDescending { it.startMs } ?: w }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val hours: StateFlow<List<HourSteps>> = combine(dbHours, demo) { h, dm -> dm?.hours ?: h }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val moods: StateFlow<List<MoodEntry>> = combine(dbMoods, demo) { m, dm -> dm?.moods?.sortedByDescending { it.atMs } ?: m }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val hours: StateFlow<List<HourSteps>> = combine(dbHours, demo) { h, dm -> dm?.hours ?: h }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val moods: StateFlow<List<MoodEntry>> = combine(dbMoods, demo) { m, dm -> dm?.moods?.sortedByDescending { it.atMs } ?: m }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val coupleDays: StateFlow<Set<Long>> = combine(dbCoupleDays, demo) { d, dm -> dm?.coupleDays ?: d }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
     val coupleDistanceM: StateFlow<Double> = combine(dbCoupleDistance, demo) { d, dm -> dm?.coupleDistanceM ?: d }.stateIn(viewModelScope, SharingStarted.Eagerly, 0.0)
 
@@ -176,7 +182,7 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     }.combine(clockTick) { h, _ -> h }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val weekly: StateFlow<WeeklyReport> = combine(days, walks, clockTick) { d, w, _ -> WeeklyReport.build(d, w, Clock.today()) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, WeeklyReport.build(emptyList(), emptyList(), Clock.today()))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WeeklyReport.build(emptyList(), emptyList(), Clock.today()))
 
     /** Steps for the last 7 days, oldest first (for the chart). */
     val weekBars: StateFlow<List<Pair<Long, Int>>> = combine(days, clockTick) { d, _ ->
@@ -188,7 +194,7 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
 
     val fuel: StateFlow<FuelUi?> = combine(days, walks, settings, hotDay) { d, w, s, hot ->
         if (s == null) null else buildFuel(d, w, s, hot)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** 0 = this month, -1 = last month, and so on. */
     val monthOffset = MutableStateFlow(0)
@@ -196,19 +202,19 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     val trends: StateFlow<TrendsUi?> = combine(days, hours, moods, walks, coupleDays) { d, h, m, w, cd -> TrendInputs(d, h, m, w, cd) }
         .combine(monthOffset) { t, off -> t to off }
         .combine(settings) { (t, off), s -> if (s == null) null else buildTrends(t, off, s, demo.value) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private class TrendInputs(val days: List<DayRecord>, val hours: List<HourSteps>, val moods: List<MoodEntry>, val walks: List<WalkRecord>, val coupleDays: Set<Long>)
 
     val recap: StateFlow<List<RecapSlide>> = combine(days, walks, hours, settings, coupleDays) { d, w, h, s, cd ->
         if (s == null) emptyList() else buildRecap(d, w, h, s, cd)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val badges: StateFlow<List<BadgeRow>> = combine(days, walks, moods, coupleDays, settings) { d, w, m, cd, s ->
         if (s == null) emptyList() else buildBadges(d, w, m, cd, coupleDistanceM.value, s)
     }.combine(dbBadges) { rows, stored ->
         rows.map { r -> if (demo.value != null) r else r.copy(unlockedMs = stored[r.id]) }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _badgeEvents = MutableSharedFlow<List<BadgeId>>(extraBufferCapacity = 4)
 
@@ -223,26 +229,32 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         viewModelScope.launch {
             demo.map { it != null }.distinctUntilChanged().collectLatest { on ->
                 demoExtra.value = 0
-                while (on) {
-                    delay(2_000)
-                    val walking = c.session.ui.value.demo
-                    demoExtra.update { (it + if (walking) 30 else 12).coerceAtMost(9_000) }
+                // Only animates while the app is on screen; there is nothing to look at otherwise.
+                if (on) fg.collectLatest { visible ->
+                    while (visible) {
+                        delay(2_000)
+                        val walking = c.session.ui.value.demo
+                        demoExtra.update { (it + if (walking) 30 else 12).coerceAtMost(9_000) }
+                    }
                 }
             }
         }
 
         // Keep the home-screen widget in step with the app.
         viewModelScope.launch {
-            home.collect { h ->
+            // The service and the background job keep the widget current when the app is closed; this is for when it is open.
+            fg.flatMapLatest { visible -> if (visible) home else emptyFlow() }.collect { h ->
                 if (h != null && !h.demo) WidgetBridge.publish(appContext, h.verifiedSteps, h.goal, h.name)
             }
         }
 
         // Badge unlocks: evaluated against the real database only, and only once every table has been read.
         viewModelScope.launch {
-            combine(c.repository.days, c.repository.walks, c.repository.moods, c.repository.coupleDays, c.repository.badges) { d, w, m, cd, stored ->
+            // Checked while the app is open (a badge earned in the background is recognised and celebrated the next time it opens).
+            val snapshots = combine(c.repository.days, c.repository.walks, c.repository.moods, c.repository.coupleDays, c.repository.badges) { d, w, m, cd, stored ->
                 BadgeSnapshot(d, w, m, cd, stored.keys)
-            }.combine(settings) { snap, s -> snap to s }.collect { (snap, s) ->
+            }
+            fg.flatMapLatest { visible -> if (visible) snapshots else emptyFlow() }.combine(settings) { snap, s -> snap to s }.collect { (snap, s) ->
                 if (s == null || s.demoMode) return@collect
                 val dist = c.repository.coupleDistanceNow()
                 val earned = BadgeEngine.evaluate(badgeInput(snap.days, snap.walks, snap.moods, snap.coupleDays, dist, s))
@@ -380,7 +392,7 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
     val stepKind get() = c.steps.kind
     val stepsNeedPermission get() = c.steps.needsPermission
     val stepsListening: StateFlow<Boolean> = c.steps.listening
-    val stepsLastSample: StateFlow<Long?> = c.steps.lastSampleMs.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val stepsLastSample: StateFlow<Long?> = c.steps.lastSampleMs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val stepsRegisterOk get() = c.steps.registerOk
 
     /**
@@ -388,16 +400,20 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
      * events immediately instead of batched, catch up with one reading, and make sure the all-day service and safety nets are alive.
      */
     fun onForeground(on: Boolean) {
+        fg.value = on
+        // The power policy sees this and switches the step sensor between immediate delivery (on screen) and minutes of batching (off).
+        c.power.setScreenVisible(on)
         if (on) {
             c.steps.acquire("ui")
-            c.steps.setInteractive(true)
             StepTracking.ensureRunning(appContext)
             viewModelScope.launch { c.steps.sampleNow() }
         } else {
-            c.steps.setInteractive(false)
             c.steps.release("ui")
         }
     }
+
+    /** What the power policy currently sees (screen, savers, charger), for the Battery card and for dropping decorative motion. */
+    val powerState: StateFlow<com.walkbuddy.domain.PowerState> = c.power.state
 
     fun stepsPermissionGranted() = StepTracking.onPermissionGranted(appContext)
 

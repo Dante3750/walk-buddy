@@ -34,6 +34,10 @@ import com.walkbuddy.domain.MeetingPin
 import com.walkbuddy.domain.RouteRecorder
 import com.walkbuddy.domain.TrailBook
 import com.walkbuddy.domain.MessageCodec
+import com.walkbuddy.domain.MotionGate
+import com.walkbuddy.domain.SendGate
+import com.walkbuddy.power.PowerMonitor
+import com.walkbuddy.rtc.NetworkWatcher
 import com.walkbuddy.domain.NudgeConfig
 import com.walkbuddy.domain.PeerMessage
 import com.walkbuddy.domain.PingLimiter
@@ -102,6 +106,7 @@ class WalkSession(
     private val locationSource: LocationSource,
     private val health: HealthBridge,
     private val routes: RouteStore,
+    private val power: PowerMonitor,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _ui = MutableStateFlow(SessionUi())
@@ -116,7 +121,11 @@ class WalkSession(
     private var signaling: SignalingClient? = null
     private var code: String? = null
     private var walkStartMs = 0L
-    private var reconnects = 0
+    private val net = NetworkWatcher(app)
+    private val reconnector = Reconnector(scope, net, maxAttempts = 6, stillNeeded = { sessionActive }, reconnect = { if (_ui.value.signaling == SignalingState.Failed) signaling?.connect(ServerConfig.URL) })
+    private var netJob: Job? = null
+    private val sendGate = SendGate()
+    private val motion = MotionGate()
     private val names = LinkedHashMap<String, String>()
     private val connected = HashSet<String>()
     private val walkJobs = mutableListOf<Job>()
@@ -142,7 +151,7 @@ class WalkSession(
         scope.launch {
             settings = settingsStore.current()
             selfId = settingsStore.ensurePeerId()
-            names.clear(); connected.clear(); reconnects = 0
+            names.clear(); connected.clear(); reconnector.cancel()
             val target = rawCodeOrLink?.let { JoinLink.parse(it) }
             code = if (solo) null else target?.code ?: SessionCode.generate()
             _ui.value = SessionUi(
@@ -150,7 +159,12 @@ class WalkSession(
                 joinLink = code?.let { JoinLink.build(it) },
                 quiet = settings.quietByDefault, pingEnabled = settings.pingEnabled, showCalories = settings.caloriesEnabled, solo = solo,
             )
-            if (!solo) connectSignaling()
+            if (!solo) {
+                net.start()
+                netJob?.cancel()
+                netJob = scope.launch { net.online.collect { if (it) reconnector.onNetworkBack() } }
+                connectSignaling()
+            }
         }
     }
 
@@ -176,7 +190,7 @@ class WalkSession(
             it.copy(
                 signaling = s,
                 note = when (s) {
-                    SignalingState.Failed -> if (reconnects < 6) ServerConfig.RETRY_NOTE else (msg ?: "Connection problem")
+                    SignalingState.Failed -> if (!reconnector.exhausted) ServerConfig.RETRY_NOTE else (msg ?: "Connection problem")
                     SignalingState.Connecting -> ServerConfig.WAKING_NOTE
                     SignalingState.Connected -> null
                     else -> it.note
@@ -185,16 +199,10 @@ class WalkSession(
         }
         when (s) {
             SignalingState.Connected -> {
-                reconnects = 0
+                reconnector.onConnected()
                 signaling?.send(SignalingMessage.Join(c, selfId))
             }
-            SignalingState.Failed -> if (reconnects < 6) {
-                reconnects++
-                scope.launch {
-                    delay(2_000L * reconnects)
-                    if (sessionActive && _ui.value.signaling == SignalingState.Failed) signaling?.connect(ServerConfig.URL)
-                }
-            }
+            SignalingState.Failed -> reconnector.onFailed()
             else -> Unit
         }
     }
@@ -321,8 +329,11 @@ class WalkSession(
 
             trailBook.clear()
             route = if (s.saveRoutes) RouteRecorder() else null
+            sendGate.reset(); motion.reset()
+            power.setWalk(true, groupSize = connected.size + 1)
             walkJobs += scope.launch {
-                locationSource.fixes().collect {
+                // GPS only for the length of this walk, at the rate the power policy asks for.
+                locationSource.fixes(power.locationPlans()).collect {
                     e.onSelfFix(it)
                     route?.add(System.currentTimeMillis(), it.pos, it.accuracyM)
                 }
@@ -343,14 +354,17 @@ class WalkSession(
     }
 
     private suspend fun tickLoop(e: WalkEngine) {
-        var n = 0
+        var lastDailyMs = 0L
         while (true) {
-            delay(1_000)
+            // Every second with the screen on, every few seconds in a pocket (the engine caps its own time step at 10 s).
+            delay(power.plan().tickMs)
             val now = System.currentTimeMillis()
             val st = e.tick(now)
-            n++
-            if (n % 2 == 0) e.selfPosition(now)?.let { link?.broadcast(MessageCodec.encode(it)) }
-            if (n % 10 == 0) broadcastDaily()
+            power.setMoving(motion.update(now, st.mySpeedMps))
+            power.setGroupSize(connected.size + 1)
+            val plan = power.plan()
+            if (sendGate.poll(now, plan.sendIntervalMs)) e.selfPosition(now)?.let { link?.broadcast(MessageCodec.encode(it)) }
+            if (now - lastDailyMs >= plan.dailyBroadcastMs) { lastDailyMs = now; broadcastDaily() }
             st.myPos?.let { trailBook.add("me", it) }
             st.buddies.forEach { b -> b.pos?.let { trailBook.add(b.id, it) } }
             _ui.update { it.copy(walk = st, trails = trailBook.snapshot()) }
@@ -451,6 +465,11 @@ class WalkSession(
     }
 
     private fun teardownNetwork() {
+        // Walk over: the policy stops location and fast sensors, the signaling socket and peer connections close, the network callback goes.
+        power.setWalk(false)
+        reconnector.cancel()
+        netJob?.cancel(); netJob = null
+        net.stop()
         signaling?.close(); signaling = null
         link?.close(); link = null
         names.clear(); connected.clear(); peerDaily.clear()

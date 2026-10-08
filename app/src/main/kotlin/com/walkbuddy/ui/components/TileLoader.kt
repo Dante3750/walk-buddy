@@ -23,7 +23,10 @@ object TileLoader {
     private val client by lazy {
         OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
     }
-    private val cache = LruCache<String, ImageBitmap>(96)
+    /** Bounded by bytes, not count: at most 8 MB (a tile is 256 KB decoded), or 1/16 of the app's heap on small phones. */
+    private val cache = object : LruCache<String, ImageBitmap>(minOf(8L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 16).toInt()) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+    }
     private val failedAt = HashMap<String, Long>()
     private val gate = Semaphore(2)
 
@@ -47,7 +50,11 @@ object TileLoader {
                     }
                 }.getOrNull()
             }.also { img ->
-                if (img != null) synchronized(cache) { cache.put(k, img) } else synchronized(failedAt) { failedAt[k] = System.currentTimeMillis() }
+                if (img != null) synchronized(cache) { cache.put(k, img) } else synchronized(failedAt) {
+                    val now = System.currentTimeMillis()
+                    if (failedAt.size > 200) failedAt.values.removeAll { now - it >= 30_000 } // the failure list stays small
+                    failedAt[k] = now
+                }
             }
         }
     }

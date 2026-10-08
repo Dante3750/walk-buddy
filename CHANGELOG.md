@@ -1,5 +1,30 @@
 # Changelog
 
+## alpha 1.7 (1.7.0-alpha)
+
+Battery and resource audit of the whole app, then fixes. No device was available: every claim below comes from reading the code and Android's power documentation, none is measured.
+
+Top findings (alpha 1.6 behaviour):
+
+- Step sensor batching was only 60 s, the service woke the CPU every minute just to ask what day it is, and the notification and widget path (including a read of the whole history) ran on every step write.
+- A 15 minute `ELAPSED_REALTIME_WAKEUP` alarm and a 15 minute WorkManager job did the same work (two wake-ups for one result).
+- Walks asked for GPS and network location every second with no distance filter, on both providers, whatever the screen or movement; the group sent every 3 s and the partner every 2 s, plus a full history read every 10 s for the partner's daily ring.
+- Reconnects were a fixed linear delay with no jitter and no knowledge of the network; every WebSocket built its own OkHttp client.
+- The accelerometer fallback streamed at game rate from a foreground service all day.
+- UI: the flame and the walking glow re-composed their whole composable at display rate, forever; Settings polled every 2 s; trend, recap, badge and fuel flows were recomputed on every database write even with the app in the background.
+
+What changed:
+
+- New pure-Kotlin `SamplingPolicy` (domain, with `PowerState`, `MotionGate`, `SendGate`, `Backoff`, `StepNotifyThrottle`, `StepBuckets`, `BatteryCopy`; 33 new tests, domain total 340). One place decides sensor latency, location rate, send rate, loop rate, notification and widget spacing from screen visibility, walk, movement, group size, Android Battery Saver, the new Battery saver switch and charging. `PowerMonitor` feeds it using three rare system broadcasts (not `ACTION_BATTERY_CHANGED`).
+- Steps: report latency 5 min with the screen off (10 min in saver, 60 s on a charger, immediate with the app open, 5-10 s during a walk). Event bursts are merged per clock hour before storage and the timestamp tolerance was widened to match, so hourly and midnight attribution stay exact. The accelerometer fallback is registered only with the screen on or during a walk, and no foreground service is started for it.
+- Safety nets: the alarm is gone (and cancelled on update); one WorkManager job, 30 min with a 10 min flex window, battery-not-low, runs the sample, widget and reminders and skips runs that come too soon. `BootReceiver` is no longer exported. No wake locks, alarms, exact alarms or `JobScheduler` anywhere.
+- `StepService`: no minute loop (date, time and time-zone broadcasts instead), a repeated start no longer restarts the pipeline, the notification is throttled (about 100 steps and 5 min hidden, 20 steps and 15 s visible, refreshed when the app opens), widget refreshes are spaced.
+- Walks: location only during an active walk and re-requested as the plan changes (3 s / 3 m moving, 5 s / 5 m screen off, 6-10 s still, saver slower); GPS is the source, network is a slower backup. Walk loop 1 s visible, 5 s hidden (the walk engine's step cap is now 10 s). Group and partner sends follow the policy (3-8 s, never above 10 s), bursts coalesce, partner daily ring every 30-120 s, walk notification at most every 10-30 s.
+- Network: exponential backoff with jitter (`Backoff`), waits for the system network callback when offline, one shared OkHttp client, ping every 40 s, everything closed when a walk ends.
+- UI: `rememberPulse` (10-12 fps, resumed only, draw-only) replaces the infinite transitions; Battery saver acts like Reduce motion; Settings refreshes every 15 s while resumed; trends, recap, badges, fuel, weekly and hourly data load only while subscribed; widget push and badge checks run only with the app open; OSM tile cache capped by bytes (8 MB).
+- Settings: new "Battery" card (current mode, what it means, tips, Battery saver mode switch). README "Battery" section.
+- Not verified on a device: real battery numbers, sensor-hub batching on specific phones (some ignore `maxReportLatency`; the app then just gets events sooner), Doze behaviour, OEM background limits.
+
 ## alpha 1.6 (1.6.0-alpha)
 
 Fix: steps were not counting, and did not survive the app being closed.

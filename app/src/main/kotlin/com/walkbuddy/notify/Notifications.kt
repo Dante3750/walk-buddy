@@ -68,10 +68,10 @@ object Notifications {
     }
 
     /** The quiet, always-on step counting notification (the foreground service's). */
-    fun stepsOngoing(context: Context, steps: Int): Notification =
+    fun stepsOngoing(context: Context, steps: Int?): Notification =
         NotificationCompat.Builder(context, CH_STEPS)
             .setSmallIcon(R.drawable.ic_stat_walk)
-            .setContentTitle("%,d steps today".format(steps))
+            .setContentTitle(if (steps == null) "Counting your steps" else "%,d steps today".format(steps))
             .setContentText("Walk Buddy is counting quietly. Nothing leaves your phone.")
             .setOngoing(true)
             .setOnlyAlertOnce(true)

@@ -14,6 +14,8 @@ import android.os.Looper
 import android.os.SystemClock
 import com.walkbuddy.domain.AccelStepDetector
 import com.walkbuddy.domain.Fix
+import com.walkbuddy.domain.LocationPlan
+import com.walkbuddy.domain.SamplingPolicy
 import com.walkbuddy.domain.StepSensorKind
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -62,14 +64,17 @@ class StepSource(context: Context) {
     /** Converts a sensor timestamp (elapsed realtime, ns) to wall clock; distrusts devices whose timestamps are on another base. */
     private fun wallOf(eventNs: Long, boot: Long, now: Long): Long {
         val w = boot + eventNs / 1_000_000L
-        return if (kotlin.math.abs(w - now) > 5 * 60_000L) now else minOf(w, now)
+        // Batched events arrive up to the longest report latency late (10 min in Battery Saver), so the tolerance must exceed that.
+        return if (kotlin.math.abs(w - now) > SamplingPolicy.MAX_SENSOR_LATENCY_MS + 5 * 60_000L) now else minOf(w, now)
     }
 
     /**
-     * Continuous events while collected. [interactive] true (app on screen) delivers immediately; false batches for
-     * [BATCH_LATENCY_US] so the CPU is woken rarely. The hardware keeps counting either way.
+     * Continuous events while collected. [latencyMs] says how long the hardware may hold events before waking the app: 0 delivers
+     * immediately (app on screen), larger values batch them so the CPU sleeps (the counter is cumulative and kept by the sensor hub,
+     * so nothing is lost, delivery is only later). null means "do not listen right now" (the accelerometer fallback in the background).
+     * The listener is re-registered whenever the value changes. No wake lock is ever held.
      */
-    fun events(interactive: Flow<Boolean>): Flow<StepEvent> = callbackFlow {
+    fun events(latencyMs: Flow<Long?>): Flow<StepEvent> = callbackFlow {
         val k = kind
         val sensor = when (k) {
             StepSensorKind.Counter -> counter
@@ -101,12 +106,13 @@ class StepSource(context: Context) {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
         val job = launch {
-            interactive.distinctUntilChanged().collect { live ->
+            latencyMs.distinctUntilChanged().collect { latency ->
                 manager.unregisterListener(listener)
+                if (latency == null) return@collect
                 val ok = when (k) {
-                    // Accelerometer must stream; batching it would only delay the detector.
+                    // Accelerometer must stream; batching it would only delay the detector. The policy only allows it with the screen on or during a walk.
                     StepSensorKind.Accelerometer -> manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
-                    else -> manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL, if (live) 0 else BATCH_LATENCY_US)
+                    else -> manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL, (latency * 1000L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt())
                 }
                 lastRegisterOk = ok
             }
@@ -134,26 +140,29 @@ class StepSource(context: Context) {
 
                     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
                 }
-                val ok = manager.registerListener(listener, s, SensorManager.SENSOR_DELAY_FASTEST)
+                // An on-change sensor reports its current value right after registration, so the slowest rate is as fast as any.
+                val ok = manager.registerListener(listener, s, SensorManager.SENSOR_DELAY_NORMAL)
                 lastRegisterOk = ok
                 if (!ok) cont.resume(StepEvent(StepSensorKind.Counter, -1, 0, 0)) // refused: surfaced as null below
                 cont.invokeOnCancellation { manager.unregisterListener(listener) }
             }
         }?.takeIf { it.value >= 0 }
     }
-
-    companion object {
-        /** How long the hardware may hold events before waking the app. A minute keeps the CPU asleep and still feels current. */
-        const val BATCH_LATENCY_US = 60_000_000
-    }
 }
 
-/** Plain platform LocationManager (GPS and network providers). No Play Services. Caller must hold the location permission. */
+/**
+ * Plain platform LocationManager (GPS and network providers). No Play Services. Caller must hold the location permission.
+ * Updates exist only while [fixes] is collected, which the sessions do only during an active walk; there is no background location.
+ */
 class LocationSource(context: Context) {
     private val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
+    /**
+     * Fixes at the rate [plans] currently asks for (re-requested whenever the plan changes). GPS carries the walk; the network
+     * provider is a slower backup (4x the interval, at least 15 s apart) for the first seconds and for tunnels, not a second GPS.
+     */
     @SuppressLint("MissingPermission")
-    fun fixes(): Flow<Fix> = callbackFlow {
+    fun fixes(plans: Flow<LocationPlan>): Flow<Fix> = callbackFlow {
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 trySend(
@@ -175,12 +184,20 @@ class LocationSource(context: Context) {
             @Deprecated("Deprecated in Java")
             override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
         }
-        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-            .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
-        for (p in providers) {
-            runCatching { manager.requestLocationUpdates(p, 1000L, 0f, listener, Looper.getMainLooper()) }
+        val job = launch {
+            plans.distinctUntilChanged().collect { plan ->
+                runCatching { manager.removeUpdates(listener) }
+                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                    .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+                for (p in providers) {
+                    val network = p == LocationManager.NETWORK_PROVIDER
+                    val every = if (network) maxOf(plan.intervalMs * 4, 15_000L) else plan.intervalMs
+                    val distance = if (network) maxOf(plan.minDistanceM * 4, 25f) else plan.minDistanceM
+                    runCatching { manager.requestLocationUpdates(p, every, distance, listener, Looper.getMainLooper()) }
+                }
+            }
         }
-        awaitClose { runCatching { manager.removeUpdates(listener) } }
+        awaitClose { job.cancel(); runCatching { manager.removeUpdates(listener) } }
     }
 
     /** Most recent known position from any provider, or null. Requires the location permission. */

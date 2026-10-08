@@ -39,7 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.walkbuddy.data.GoalMode
 import com.walkbuddy.data.Settings
+import com.walkbuddy.domain.BatteryCopy
 import com.walkbuddy.domain.Copy
+import com.walkbuddy.domain.PowerState
 import com.walkbuddy.domain.Diet
 import com.walkbuddy.domain.LocationPrecision
 import com.walkbuddy.domain.ProfileCheck
@@ -50,13 +52,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.walkbuddy.health.HealthBridges
-import com.walkbuddy.notify.PeriodicSampler
 import com.walkbuddy.domain.StepHealth
 import com.walkbuddy.domain.StepSensorKind
 import com.walkbuddy.steps.StepService
 import com.walkbuddy.steps.StepTracking
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.walkbuddy.ui.rememberPermState
 import kotlinx.coroutines.delay
@@ -113,8 +115,14 @@ fun SettingsScreen(vm: AppViewModel) {
     }
     val perms = rememberPermState()
     var tick by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    // The row is a live check: refresh it every couple of seconds and whenever the user comes back from a system settings page.
-    LaunchedEffect(Unit) { while (true) { delay(2_000); tick = System.currentTimeMillis() } }
+    // The row is a live check ("5 min ago" does not need seconds): refresh it every 15 s, only while this screen is resumed (nothing runs with
+    // the screen off), and at once when the user comes back from a system settings page.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) { delay(15_000); tick = System.currentTimeMillis() }
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { perms.refresh(); tick = System.currentTimeMillis() }
     val lastSample by vm.stepsLastSample.collectAsStateWithLifecycle()
     val stepHealth = run {
@@ -138,7 +146,7 @@ fun SettingsScreen(vm: AppViewModel) {
             service = when {
                 StepService.running -> "Running"
                 !granted && vm.stepsNeedPermission -> "Not running, waiting for permission"
-                else -> "Not running right now (a safety check reads the counter every ~15 min)"
+                else -> "Not running right now (a background check reads the counter about every 30 min)"
             },
             battery = if (ignoring) "Unrestricted" else "Optimised, Android may stop counting in the background",
             permissionOk = granted || !vm.stepsNeedPermission,
@@ -169,7 +177,8 @@ fun SettingsScreen(vm: AppViewModel) {
         },
         onDeleteRoute = { vm.deleteRoute(it) },
     )
-    SettingsContent(settings, actions, stepHealth)
+    val power by vm.powerState.collectAsStateWithLifecycle()
+    SettingsContent(settings, actions, stepHealth, battery = power, stepKind = vm.stepKind)
 }
 
 private fun openOrToast(ctx: android.content.Context, i: Intent) {
@@ -177,7 +186,7 @@ private fun openOrToast(ctx: android.content.Context, i: Intent) {
 }
 
 @Composable
-fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? = null) {
+fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? = null, battery: PowerState? = null, stepKind: StepSensorKind? = StepSensorKind.Counter) {
     if (s == null) {
         EmptyState("Loading", "One moment.")
         return
@@ -185,6 +194,7 @@ fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle("Settings")
         if (stepHealth != null) StepHealthSection(stepHealth, a)
+        BatterySection(a, s, battery ?: PowerState(userBatterySaver = s.batterySaver), stepHealth, stepKind)
         AppearanceSection(a, s)
         ProfileSection(a, s)
         GoalSection(a, s)
@@ -218,6 +228,28 @@ private fun StepHealthSection(h: StepHealthUi, a: SettingsActions) {
             if (!h.permissionOk) OutlinedButton(onClick = a.onOpenAppSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("App settings") }
             if (!h.batteryOk) OutlinedButton(onClick = a.onBatterySettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("Battery settings") }
             TextButton(onClick = a.onOpenDontKillMyApp, modifier = Modifier.heightIn(min = 48.dp)) { Text("Steps stop? dontkillmyapp.com") }
+        }
+    }
+}
+
+@Composable
+private fun BatterySection(a: SettingsActions, s: Settings, power: PowerState, stepHealth: StepHealthUi?, stepKind: StepSensorKind?) {
+    // The card shows what the app really does: the text is generated from the same SamplingPolicy the services use.
+    val state = power.copy(userBatterySaver = s.batterySaver)
+    SectionCard("Battery") {
+        HealthLine("Current mode", BatteryCopy.modeLine(state), true)
+        BatteryCopy.rateLines(state, stepKind).forEach { Disclaimer(it) }
+        ToggleRow(
+            "Battery saver mode",
+            "Lowest rates everywhere: the step sensor batches for up to 10 minutes with the screen off, walks check GPS and talk to the group less often, and decorative animation stops. Step counts stay accurate. Android's Battery Saver turns this on automatically.",
+            s.batterySaver,
+        ) { on -> a.save { setBatterySaver(on) } }
+        Text("Tips", style = MaterialTheme.typography.titleMedium)
+        BatteryCopy.TIPS.forEach { Disclaimer("\u2022 $it") }
+        if (stepHealth != null && !stepHealth.batteryOk) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = a.onBatterySettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("Battery settings") }
+            }
         }
     }
 }
@@ -297,9 +329,9 @@ private fun GoalSection(a: SettingsActions, s: Settings) {
                 )
             }
         }
-        ToggleRow("Sitting-break reminders", "About an hour of sitting, then a 2 minute stand or stroll. Checked every ~15 minutes, quiet at night.", s.sittingReminders) { on ->
+        ToggleRow("Sitting-break reminders", "About an hour of sitting, then a 2 minute stand or stroll. Checked about every 30 minutes, quiet at night.", s.sittingReminders) { on ->
             a.save { setSitting(on) }
-            if (on) PeriodicSampler.schedule(ctx)
+            if (on) com.walkbuddy.steps.StepTracking.scheduleSafetyNet(ctx)
         }
     }
 }

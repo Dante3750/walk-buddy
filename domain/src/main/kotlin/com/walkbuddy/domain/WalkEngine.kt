@@ -164,7 +164,7 @@ class WalkEngine(
     }
 
     fun tick(nowMs: Long): WalkState {
-        val dtSec = ((nowMs - lastTickMs) / 1000).toInt().coerceIn(0, 5)
+        val dtSec = ((nowMs - lastTickMs) / 1000).toInt().coerceIn(0, 10)
         lastTickMs = nowMs
         val cad = cadence.spm()
         active.add(cad, dtSec)

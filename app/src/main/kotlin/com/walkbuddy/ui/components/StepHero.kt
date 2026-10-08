@@ -93,12 +93,10 @@ fun StepHero(
         if (motion.reduceMotion) animFraction.snapTo(fraction)
         else animFraction.animateTo(fraction, spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessLow))
     }
-    val pulse = if (walking && !motion.reduceMotion) {
-        rememberInfiniteTransition(label = "glow").animateFloat(
-            initialValue = 0.25f, targetValue = 0.65f,
-            animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glowAlpha",
-        ).value
-    } else if (Hero.goalReached(target, goal)) 0.45f else 0.0f
+    // The walking glow: ~12 fps, only while this screen is resumed, and read inside the Canvas so only drawing is redone (no recomposition).
+    val animateGlow = walking && !motion.reduceMotion
+    val glow = rememberPulse(periodMs = 1500, enabled = animateGlow, fps = 12)
+    val restingGlow = if (!animateGlow && Hero.goalReached(target, goal)) 0.45f else 0.0f
 
     val shown = animSteps.value.roundToInt()
     val numberText = Hero.thousands(shown)
@@ -136,6 +134,7 @@ fun StepHero(
                         c.x + radiusPx * cos(Math.toRadians((sweep - 90f).toDouble())).toFloat(),
                         c.y + radiusPx * sin(Math.toRadians((sweep - 90f).toDouble())).toFloat(),
                     )
+                    val pulse = if (animateGlow) 0.25f + 0.4f * glow.value else restingGlow
                     if (pulse > 0f) {
                         val gr = sw * 1.9f
                         drawCircle(

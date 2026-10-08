@@ -47,7 +47,6 @@ import com.walkbuddy.ui.components.NavItem
 import com.walkbuddy.ui.components.TabGlyph
 import com.walkbuddy.ui.components.WbBottomBar
 import com.walkbuddy.ui.components.WbRail
-import com.walkbuddy.notify.PeriodicSampler
 import com.walkbuddy.session.GroupPhase
 import com.walkbuddy.session.Phase
 import com.walkbuddy.ui.screens.GroupCreateScreen
@@ -106,7 +105,7 @@ fun WalkBuddyApp(vm: AppViewModel) {
                     onUnits = { u -> vm.saveSettings { setUnits(u) } },
                     onFinish = { demo ->
                         vm.saveSettings { ensurePeerId(); if (demo) setDemoMode(true); setOnboardingDone() }
-                        PeriodicSampler.schedule(ctx)
+                        com.walkbuddy.steps.StepTracking.scheduleSafetyNet(ctx)
                     },
                 )
             }

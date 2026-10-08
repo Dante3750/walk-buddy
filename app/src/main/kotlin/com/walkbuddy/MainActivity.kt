@@ -9,6 +9,8 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.walkbuddy.domain.PowerMode
+import com.walkbuddy.domain.SamplingPolicy
 import com.walkbuddy.ui.AppViewModel
 import com.walkbuddy.ui.WalkBuddyApp
 import com.walkbuddy.ui.theme.WalkBuddyTheme
@@ -25,9 +27,12 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
+            val power by viewModel.powerState.collectAsStateWithLifecycle()
+            // Battery Saver (Android's or ours) switches off the endless decorative animations, the same way "reduce motion" does.
+            val saving = SamplingPolicy.mode(power) == PowerMode.Saving
             WalkBuddyTheme(
                 dynamicColor = settings?.dynamicColor == true,
-                reduceMotion = settings?.reduceMotion == true,
+                reduceMotion = settings?.reduceMotion == true || saving,
                 haptics = settings?.haptics != false,
             ) {
                 WalkBuddyApp(viewModel)

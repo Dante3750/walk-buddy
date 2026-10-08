@@ -1,11 +1,11 @@
 package com.walkbuddy.notify
 
+import android.content.BroadcastReceiver
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
 import com.walkbuddy.WalkBuddyApplication
 import com.walkbuddy.data.Clock
 import com.walkbuddy.data.Goals
@@ -23,38 +23,42 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * A cheap inexact alarm (about every 15 minutes) that samples the step counter once. It keeps today's
- * steps current when the app is closed and drives the optional sitting-break reminder. No exact-alarm permission needed.
+ * The slow, once-in-a-while background check. It used to be an exact-ish alarm (a CPU wake-up every 15 minutes) PLUS a WorkManager job
+ * doing the same thing; now it is only the WorkManager job (see [com.walkbuddy.steps.StepSampleWorker]), which Android can batch with
+ * other apps' work and defer in Doze. [cancelLegacyAlarm] removes the alarm that alpha 1.6 and older scheduled.
  */
 object PeriodicSampler {
-    private const val INTERVAL_MS = 15 * 60 * 1000L
+    private const val LEGACY_RECEIVER = "com.walkbuddy.notify.PeriodicReceiver"
+    private const val PREFS = "wb_steps"
+    private const val KEY_LEGACY_GONE = "legacy_alarm_cancelled"
 
-    private fun pending(context: Context): PendingIntent =
-        PendingIntent.getBroadcast(context, 77, Intent(context, PeriodicReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-
-    fun schedule(context: Context) {
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + INTERVAL_MS, pending(context))
-    }
-
-    fun cancel(context: Context) {
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.cancel(pending(context))
-    }
-}
-
-class PeriodicReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        val app = context.applicationContext as WalkBuddyApplication
-        val pendingResult = goAsync()
-        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            try {
-                withTimeoutOrNull(8_000) { sample(app) }
-            } finally {
-                PeriodicSampler.schedule(app)
-                pendingResult.finish()
+    /** One-time (guarded by a flag), idempotent: cancels the old 15 minute alarm if an older version left it armed. */
+    fun cancelLegacyAlarm(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_LEGACY_GONE, false)) return
+        runCatching {
+            val intent = Intent().setComponent(ComponentName(context.packageName, LEGACY_RECEIVER))
+            val pi = PendingIntent.getBroadcast(context, 77, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+            if (pi != null) {
+                (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pi)
+                pi.cancel()
             }
         }
+        prefs.edit().putBoolean(KEY_LEGACY_GONE, true).apply()
+    }
+
+    /**
+     * What the background check does: store the delta from the hardware counter, refresh the widget, and drive the optional
+     * reminders. A run that comes sooner than the power policy's minimum gap (longer in Battery Saver) does nothing.
+     */
+    suspend fun run(app: WalkBuddyApplication) {
+        val c = app.container
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong("last_check", 0L)
+        if (now >= last && now - last < c.power.plan().workerMinGapMs) return
+        prefs.edit().putLong("last_check", now).apply()
+        sample(app)
     }
 
     /** Anniversary and walk-date reminders: each fires once, and never during quiet hours. */
@@ -89,7 +93,7 @@ class PeriodicReceiver : BroadcastReceiver() {
         if (s.quietHours.isQuiet(Clock.hourOfDay(now))) return
         val monitor = SittingMonitor()
         c.settings.sitState()?.let { monitor.restore(it) }
-        // Moving = enough steps since the last ~15 minute sample to count as getting up.
+        // Moving = enough steps since the last background check (15 to 60 minutes ago) to count as getting up.
         val moving = sinceLast >= 120
         val action = if (moving) { monitor.markBreak(now); null } else monitor.onSample(now, false, Clock.hourOfDay(now))
         c.settings.saveSitState(monitor.snapshot())
@@ -104,6 +108,8 @@ class PeriodicReceiver : BroadcastReceiver() {
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // Only the two system broadcasts we asked for; anything else (the component is not exported, this is belt and braces) is ignored.
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         StepTracking.ensureRunning(context)
         val app = context.applicationContext as? WalkBuddyApplication ?: return
         val pending = goAsync()

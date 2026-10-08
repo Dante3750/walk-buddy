@@ -8,16 +8,19 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.walkbuddy.WalkBuddyApplication
+import com.walkbuddy.domain.StepSensorKind
 import com.walkbuddy.notify.PeriodicSampler
 import java.util.concurrent.TimeUnit
 
 /** Entry points that keep always-on step counting alive. Every call is idempotent and safe from a receiver or the background. */
 object StepTracking {
-    private const val WORK = "walkbuddy-step-safety-net"
+    private const val WORK = "walkbuddy-step-safety-net-v2"
+    private const val LEGACY_WORK = "walkbuddy-step-safety-net"
     private const val PREFS = "wb_steps"
     private const val KEY_ASKED = "asked_activity"
     private const val KEY_TIP_DISMISSED = "battery_tip_dismissed"
@@ -30,26 +33,37 @@ object StepTracking {
     /** Whether the foreground service may run now. On Android 14+ a health service without the permission would crash on start. */
     fun canRunService(context: Context): Boolean {
         val c = (context.applicationContext as? WalkBuddyApplication)?.container ?: return false
-        return c.steps.available && permissionGranted(context)
+        // Without a hardware counter or detector the only fallback is the accelerometer, which works only while the CPU is awake,
+        // so a foreground service would just burn battery for nothing: the app (screen on) and walks listen by themselves.
+        return c.steps.available && c.steps.kind != StepSensorKind.Accelerometer && permissionGranted(context)
     }
 
     /**
-     * Makes sure steps keep being counted: the safety nets (a WorkManager job and an inexact alarm, both survive the app being
-     * killed) are scheduled, and the foreground service is started if Android allows it from here. Android 12+ refuses
-     * a background service start in many situations (for example right after an app update); that is fine, the safety nets still
-     * read the hardware counter, and the next time the app opens the service starts.
+     * Makes sure steps keep being counted: the WorkManager safety net is scheduled (it survives the app being killed) and the
+     * foreground service is started if Android allows it from here. Android 12+ refuses a background service start in many
+     * situations (for example right after an app update); that is fine, the safety net still reads the hardware counter, and the next
+     * time the app opens the service starts. Cheap to call often: the scheduling happens once per process and a running service is left alone.
      */
     fun ensureRunning(context: Context) {
         val app = context.applicationContext
-        scheduleSafetyNets(app)
-        startService(app)
+        scheduleSafetyNet(app)
+        if (!StepService.running) startService(app)
     }
 
-    fun scheduleSafetyNets(app: Context) {
-        runCatching { PeriodicSampler.schedule(app) }
+    @Volatile private var scheduled = false
+
+    /** One periodic job (about 30 min, battery not low) replaces the old WorkManager job (15 min) plus the 15 min alarm. */
+    fun scheduleSafetyNet(app: Context) {
+        runCatching { PeriodicSampler.cancelLegacyAlarm(app) }
+        if (scheduled) return
         runCatching {
-            val req = PeriodicWorkRequestBuilder<StepSampleWorker>(15, TimeUnit.MINUTES).build()
-            WorkManager.getInstance(app).enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.KEEP, req)
+            val wm = WorkManager.getInstance(app)
+            wm.cancelUniqueWork(LEGACY_WORK)
+            val req = PeriodicWorkRequestBuilder<StepSampleWorker>(30, TimeUnit.MINUTES, 10, TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
+                .build()
+            wm.enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.KEEP, req)
+            scheduled = true
         }
     }
 
@@ -60,7 +74,7 @@ object StepTracking {
             ContextCompat.startForegroundService(app, Intent(app, StepService::class.java))
             true
         } catch (_: Exception) {
-            // ForegroundServiceStartNotAllowedException (Android 12+), SecurityException, IllegalStateException: stay on the safety nets.
+            // ForegroundServiceStartNotAllowedException (Android 12+), SecurityException, IllegalStateException: stay on the safety net.
             false
         }
     }

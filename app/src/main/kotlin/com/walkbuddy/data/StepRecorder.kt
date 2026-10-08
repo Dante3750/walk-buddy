@@ -5,7 +5,9 @@ import com.walkbuddy.domain.StepBaseline
 import com.walkbuddy.domain.StepDelta
 import com.walkbuddy.domain.StepLedger
 import com.walkbuddy.domain.StepSensorKind
+import com.walkbuddy.domain.StepBuckets
 import com.walkbuddy.domain.StepUpdate
+import com.walkbuddy.power.PowerMonitor
 import com.walkbuddy.sensors.StepEvent
 import com.walkbuddy.sensors.StepSource
 import kotlinx.coroutines.CancellationException
@@ -22,7 +24,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -39,7 +40,7 @@ data class StepReading(val counter: Long, val wallMs: Long)
  *  - [acquire]/[release] keep one batched sensor listener alive while anyone needs it.
  *  - [live] tells walk sessions about every new cumulative reading.
  */
-class StepRecorder(private val source: StepSource, private val repo: AppRepository, private val settings: SettingsStore) {
+class StepRecorder(private val source: StepSource, private val repo: AppRepository, private val settings: SettingsStore, private val power: PowerMonitor) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
 
@@ -49,7 +50,6 @@ class StepRecorder(private val source: StepSource, private val repo: AppReposito
 
     private val owners = LinkedHashSet<String>()
     private var listenJob: Job? = null
-    private val interactive = MutableStateFlow(false)
 
     private val _live = MutableSharedFlow<StepReading>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val live: SharedFlow<StepReading> = _live
@@ -144,18 +144,21 @@ class StepRecorder(private val source: StepSource, private val repo: AppReposito
         }
     }
 
-    /** True while the app is on screen: events are delivered right away instead of batched, so the hero counts live. */
-    fun setInteractive(on: Boolean) { interactive.value = on }
-
     private fun startListening() {
         if (!source.available) return
-        val raw = source.events(interactive)
-        // The counter is cumulative, so dropping intermediate values loses nothing. Increments must all be kept.
-        val flow = if (source.kind == StepSensorKind.Counter) raw.conflate() else raw.buffer(Channel.UNLIMITED)
+        // How long the sensor hub may hold events is the power policy's call: immediate with the screen on, minutes in a pocket.
+        val raw = source.events(power.sensorLatency(source.kind))
+        val flow = raw.buffer(Channel.UNLIMITED)
         listenJob = scope.launch {
             _listening.value = true
             try {
-                flow.collect { e ->
+                // A batch arrives as a burst of events. Events inside one clock hour are merged before they are stored (the counter
+                // keeps its latest value, the detector and accelerometer add up), so a burst of 100 events is a few writes, while a
+                // batch that spans an hour or midnight is still split at the boundary and every step lands in the right hour and day.
+                var pending: StepEvent? = null
+                suspend fun flush() {
+                    val e = pending ?: return
+                    pending = null
                     try {
                         ingest(e)
                     } catch (c: CancellationException) {
@@ -164,10 +167,32 @@ class StepRecorder(private val source: StepSource, private val repo: AppReposito
                         // A failed write is retried by the next event, which carries the cumulative value again.
                     }
                 }
+                val ch = Channel<StepEvent>(Channel.UNLIMITED)
+                val pump = launch { try { flow.collect { ch.send(it) } } finally { ch.close() } }
+                try {
+                    while (true) {
+                        val first = ch.receiveCatching().getOrNull() ?: break
+                        pending = merge(pending, first)
+                        while (true) {
+                            val next = ch.tryReceive().getOrNull() ?: break
+                            val p = pending
+                            if (p != null && !StepBuckets.sameHour(p.wallMs, next.wallMs)) flush()
+                            pending = merge(pending, next)
+                        }
+                        flush()
+                    }
+                } finally {
+                    pump.cancel()
+                }
             } finally {
                 _listening.value = false
             }
         }
+    }
+
+    private fun merge(a: StepEvent?, b: StepEvent): StepEvent {
+        if (a == null) return b
+        return if (b.kind == StepSensorKind.Counter) b else b.copy(value = a.value + b.value)
     }
 
     fun invalidate() {

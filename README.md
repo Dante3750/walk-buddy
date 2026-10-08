@@ -57,10 +57,10 @@ Walking is better with someone, but most step apps are built for streaks and lea
 
 Steps count all day, on their own, and have nothing to do with walk sessions.
 
-- **Sensor.** The phone's hardware step counter (`TYPE_STEP_COUNTER`) keeps counting even while Walk Buddy is closed. A small foreground service (a quiet "N steps today" notification, type *health*) keeps one batched listener registered. If the phone has no step counter, the step detector is used, then the accelerometer (approximate, and only while the phone is awake).
+- **Sensor.** The phone's hardware step counter (`TYPE_STEP_COUNTER`) keeps counting even while Walk Buddy is closed. A small foreground service (a quiet "N steps today" notification, type *health*) keeps one batched listener registered; with the screen off the sensor hub holds readings for up to 5 minutes and hands them over together. If the phone has no step counter, the step detector is used, then the accelerometer (approximate, and only while the phone is awake).
 - **Baseline and delta.** The counter is cumulative since boot. Walk Buddy stores the last value it saw and adds the difference on every reading, so steps taken while the app was killed are recovered on the next read. A lower value (or a later boot time) means the phone rebooted, and the new value is then the delta.
 - **Stored first.** Each update writes the day total and the new baseline in one Room transaction, keyed by local date. A delta that spans midnight is split across the days (DST aware). The screen only reads the database, so numbers survive the app being killed, and no network is involved.
-- **Safety nets.** A WorkManager job and an inexact alarm (about every 15 minutes) read the counter even if the service was stopped. Boot and app-update receivers restart everything; Android 12+ sometimes refuses a background service start, and the safety nets cover that.
+- **Safety net.** One WorkManager job (about every 30 minutes, not when the battery is low) reads the counter even if the service was stopped. Boot and app-update receivers restart everything; Android 12+ sometimes refuses a background service start, and the safety net covers that. There are no alarms.
 - **Walks reuse the same feed.** A walk or group walk reads the same readings and never writes daily steps itself, so nothing is counted twice.
 - **See it working.** Home shows the live number while the app is open. Settings has a "Step counting health" card: permission, sensor, last reading, service, battery.
 
@@ -72,6 +72,38 @@ Steps count all day, on their own, and have nothing to do with walk sessions.
 4. **Notification hidden.** On Android 13+ the quiet notification needs the notification permission to be visible, but counting does not depend on it. Swiping it away does not stop counting.
 5. **Force stop.** "Force stop" in Android settings halts all background work until you open Walk Buddy again. The hardware counter keeps counting, and the first read after you reopen recovers those steps.
 6. **Reboot.** The hardware counter restarts at zero after a reboot; steps taken between the last reading and the shutdown cannot be recovered by any app. Steps after the reboot are counted from the first reading.
+
+## Battery
+
+Walk Buddy is built to cost very little when you are only counting steps, and to spend power only where a walk really needs it. Nothing below was measured on a phone (see the last bullet); it is what the code does and what Android's power documentation says it should cost.
+
+**What costs power, roughly in order**
+
+1. **GPS and the screen during a walk.** Continuous location is the single biggest drain, then the display.
+2. **The network during a group walk.** Every update wakes the radio; a larger group means more traffic to receive.
+3. **Waking the CPU.** Each wake-up (timers, sensor batches, notification updates, database writes) costs far more than the work it does.
+4. **Decorative animation** on screen (rings, glows, flame).
+5. **Step counting itself** is nearly free: `TYPE_STEP_COUNTER` is counted by a low-power sensor hub, not by the app.
+
+**What the app does about it**
+
+- **Steps, screen off.** The listener asks the sensor hub to batch readings for up to 5 minutes (10 in Battery saver), so the CPU sleeps in between. The counter is cumulative and held in hardware, so a late delivery loses nothing; the app only learns the number later. With the app open readings arrive at once; during a walk with the screen off they arrive every 5 s (10 s in Battery saver). Delivery bursts are merged per clock hour before they are written, so the hourly and midnight splits stay right.
+- **No wake locks, no alarms, no timers.** Nothing in the app takes a wake lock or schedules an alarm. Background safety is one WorkManager job (about every 30 minutes, skipped when the battery is low, longer gaps in Battery saver) that Android can defer in Doze. The old 15-minute alarm is cancelled on update. The step service no longer polls for midnight; it listens for the system's date-changed broadcast.
+- **No GPS unless a walk is running.** Location is requested only while a partner or group walk is tracked, and stops the moment it ends. Rate: about every 3 s / 3 m while moving with the screen on, 5 s / 5 m with it off, backing off to 6-10 s when you stand still (20 s in Battery saver). GPS is the walk's source; the network provider is only a slower backup.
+- **Group and partner traffic.** Updates are spaced by the same policy: about 3-5 s while moving, 8 s while still, a little slower for groups of more than 10 and in Battery saver, and never slower than 10 s, so nobody looks lost (the "lost" timeout is 30 s). Bursts (several people joining at once) are coalesced into one message. Reconnects use exponential backoff with jitter, wait for the system's "network available" callback instead of retrying into a dead link, and stop after a few tries. Ending a walk closes the socket, the peer connections and the network callback. One shared HTTP client replaces one per socket; keep-alive pings are every 40 s.
+- **Notifications.** The all-day step notification is updated only when the number moved by about 100 steps and 5 minutes passed (20 steps / 15 s with the app open, and at once when you open it); the walk notification at most every 10-30 s. Both are silent, low importance and alert only once.
+- **Widget and storage.** Widget refreshes and the history read behind them are spaced (a minute with the app open, minutes otherwise). Step writes are batched by the sensor latency.
+- **UI.** The decorative glow and flame run at 10-12 fps, only while the screen is showing, and redraw instead of recomposing; Battery saver switches them off like "Reduce motion". Screens collect state with the lifecycle (nothing is collected while the app is stopped), the Settings page no longer polls every 2 s, and screen-specific data (trends, recap, badges, fuel) is computed only while a screen needs it. The optional OSM tile cache is capped at 8 MB.
+- **Policy in one place.** `SamplingPolicy` (pure Kotlin, unit tested in `SamplingTest`) decides sensor latency, location rate, send rate, tick rate and notification and widget spacing from: screen visible, walk active, moving, group size, Android Battery Saver, Walk Buddy's own saver, charging.
+- **Settings, Battery card.** Shows the current mode, what it means in plain words (generated from the same policy), tips, and a *Battery saver mode* switch for extra-low rates. Android's Battery Saver turns the same rates on automatically.
+
+**Honest expectations**
+
+- All-day step counting should be a small fraction of a percent of the battery per day on a phone with a hardware step counter, because the foreground service mostly sleeps. That is an expectation from how the sensor hub works, not a measurement.
+- A walk with GPS on and the screen off is dominated by GPS and is not made free by any of this; the policy reduces how often GPS and the radio are used, it cannot remove them. A 30-minute walk should cost a few percent; a long group walk more, depending on the phone, signal and group size.
+- Phones without a step counter or step detector fall back to the accelerometer, which only works while the app is open or a walk is running. Walk Buddy deliberately does not run a background service just for that, so on such phones steps outside walks are counted only while the app is open.
+- The foreground service shows an ongoing notification (required by Android). Choosing *Unrestricted* battery use helps steps survive aggressive phone makers, at a small cost; leave it on *Optimised* if your steps keep counting.
+- **Not measured.** No device was available. Real numbers (for example `adb shell dumpsys batterystats`, Battery Historian, or a day of normal use with and without Battery saver) are still to be collected; please report them.
 
 ## Screenshots
 
@@ -126,7 +158,7 @@ Partner mode: phones swap WebRTC offers through the server, then talk directly; 
 Tests and CI:
 
 ```bash
-./gradlew :domain:test                 # 284 tests
+./gradlew :domain:test                 # 340 tests
 scripts/domain-test-offline.sh         # same tests with only the jars inside a Gradle distribution
 cd server && npm test                  # 49 tests
 ```

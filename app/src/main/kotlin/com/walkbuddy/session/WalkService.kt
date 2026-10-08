@@ -54,6 +54,7 @@ class WalkService : Service() {
         job = scope.launch {
             var lastText = ""
             var lastAt = 0L
+            var lastStage: Triple<Boolean, Phase, Boolean>? = null
             val widgetPrefs = getSharedPreferences("wb_widget", Context.MODE_PRIVATE)
             combine(session.ui, group.ui) { s, g -> s to g }.collect { (ui, g) ->
                 val groupOn = g.phase == GroupPhase.Active && !g.demo
@@ -75,7 +76,12 @@ class WalkService : Service() {
                 val w = ui.walk
                 val mySteps = if (groupOn) gw?.myVerifiedSteps else w?.myVerifiedSteps
                 val live = (groupOn || ui.phase == Phase.Walking) && mySteps != null && LiveUpdate.supported()
-                if (text != lastText || (live && now - lastAt >= 5_000)) {
+                // The text carries the distance, which changes every second: refresh at the power policy's pace (10 to 30 s), but at once
+                // when the stage changes (joining, ready, walking), so the notification is never misleading.
+                val stage = Triple(groupOn, ui.phase, gw == null)
+                val due = lastAt == 0L || now < lastAt || now - lastAt >= container.power.plan().walkNotifyMs
+                if (stage != lastStage || (due && (text != lastText || live))) {
+                    lastStage = stage
                     lastText = text
                     lastAt = now
                     val goal = widgetPrefs.getInt("goal", 6000).coerceAtLeast(500)

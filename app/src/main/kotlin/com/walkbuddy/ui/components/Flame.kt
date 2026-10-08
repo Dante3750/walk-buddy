@@ -78,13 +78,11 @@ private fun DrawScope.drawFlame(level: FlameLevel, outer: Color, inner: Color, o
 @Composable
 fun FlameIcon(level: FlameLevel, modifier: Modifier = Modifier, size: Dp = 56.dp) {
     val wb = WbTheme.colors
-    val flicker = if (level != FlameLevel.Spark && !WbTheme.motion.reduceMotion) {
-        rememberInfiniteTransition(label = "flame").animateFloat(
-            0f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "flicker",
-        ).value
-    } else 0.5f
+    // Flicker at ~10 fps, only while resumed, read inside the Canvas (draw only). The old version re-composed the whole icon every frame, forever.
+    val animate = level != FlameLevel.Spark && !WbTheme.motion.reduceMotion
+    val flicker = rememberPulse(periodMs = 900, enabled = animate, fps = 10)
     val outline = MaterialTheme.colorScheme.outline
-    Canvas(modifier.size(size)) { drawFlame(level, wb.flameOuter, wb.flameInner, outline, flicker) }
+    Canvas(modifier.size(size)) { drawFlame(level, wb.flameOuter, wb.flameInner, outline, flicker.value) }
 }
 
 /** The streak: a flame that grows with it, the count in the display face, and rest tokens as small labelled pips. */
