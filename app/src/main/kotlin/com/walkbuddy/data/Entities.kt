@@ -123,6 +123,9 @@ data class SharedWalkEntity(
     val longestTogetherMs: Long,
     val maxGapM: Double,
     val route: String?,
+    /** alpha 2.0: a private text note and an app-private photo file name (see WalkMedia). Both optional. */
+    val note: String? = null,
+    val photo: String? = null,
 ) {
     fun toDomain() = SharedWalkRecord(
         id = id, startMs = startMs, durationMs = durationMs, mode = SharedMode.fromName(mode), memberCount = memberCount, title = title,
@@ -137,4 +140,16 @@ data class SharedWalkEntity(
             togetherPct = r.togetherPct, longestTogetherMs = r.longestTogetherMs, maxGapM = r.maxGapM, route = r.routePolyline,
         )
     }
+}
+
+/** A local, shared-goal challenge the person started (alpha 2.0). Progress is computed from the walks history, never stored. */
+@Entity(tableName = "challenges")
+data class ChallengeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val templateId: String,
+    val startDay: Long,
+    val endDay: Long,
+    val completedMs: Long?,
+) {
+    fun toDomain() = com.walkbuddy.domain.ChallengeInstance(id, templateId, startDay, endDay, completedMs)
 }

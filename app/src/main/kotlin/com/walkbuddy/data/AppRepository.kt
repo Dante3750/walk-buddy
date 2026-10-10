@@ -18,6 +18,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 data class SpotRow(val id: Long, val spot: FavoriteSpot)
@@ -41,6 +42,7 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
     val spots: Flow<List<SpotRow>> = dao.spots().map { l -> l.map { SpotRow(it.id, it.toDomain()) } }
     val dates: Flow<List<WalkDate>> = dao.dates().map { l -> l.map { it.toDomain() } }
     val sharedWalks: Flow<List<SharedWalkRecord>> = dao.sharedWalks().map { l -> l.map { it.toDomain() } }
+    val challenges: Flow<List<com.walkbuddy.domain.ChallengeInstance>> = dao.challenges().map { l -> l.map { it.toDomain() } }
     val coupleDistanceM: Flow<Double> = dao.coupleDistanceM()
     val coupleDays: Flow<Set<Long>> = dao.coupleWalkDays().map { it.toSet() }
     val hours: Flow<List<HourSteps>> = dao.hours().map { l -> l.map { it.toDomain() } }
@@ -128,6 +130,27 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
 
     suspend fun clearSharedWalks() = dao.clearSharedWalks()
 
+    /** The private note and photo file name of a shared walk (alpha 2.0). */
+    suspend fun sharedExtras(id: Long): Pair<String?, String?> = dao.sharedWalk(id).let { it?.note to it?.photo }
+
+    suspend fun setSharedNote(id: Long, note: String?) = dao.setSharedNote(id, com.walkbuddy.domain.WalkNotes.clean(note))
+
+    suspend fun setSharedPhoto(id: Long, photo: String?) = dao.setSharedPhoto(id, photo)
+
+    suspend fun photoFiles(): List<String> = dao.allPhotos()
+
+    suspend fun startChallenge(templateId: String, today: Long = Clock.today()): Boolean {
+        val current = dao.challenges().first().map { it.toDomain() }
+        if (!com.walkbuddy.domain.Challenges.canStart(templateId, current, today)) return false
+        val i = com.walkbuddy.domain.Challenges.newInstance(templateId, today) ?: return false
+        dao.insertChallenge(ChallengeEntity(templateId = i.templateId, startDay = i.startDay, endDay = i.endDay, completedMs = null))
+        return true
+    }
+
+    suspend fun completeChallenge(id: Long, ms: Long = System.currentTimeMillis()) = dao.completeChallenge(id, ms)
+
+    suspend fun deleteChallenge(id: Long) = dao.deleteChallenge(id)
+
     suspend fun addSpot(s: FavoriteSpot): Boolean {
         val existing = dao.spotsOnce().map { it.toDomain() }
         val book = com.walkbuddy.domain.SpotBook(existing)
@@ -158,7 +181,7 @@ class AppRepository(private val db: AppDatabase, val settings: SettingsStore) {
 
     /** Delete-all: every table and every preference. */
     suspend fun deleteAll() {
-        dao.clearDays(); dao.clearStepState(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges(); dao.clearSharedWalks()
+        dao.clearDays(); dao.clearStepState(); dao.clearWalks(); dao.clearSpots(); dao.clearDates(); dao.clearHours(); dao.clearMoods(); dao.clearBadges(); dao.clearSharedWalks(); dao.clearChallenges()
         settings.clearAll()
     }
 }

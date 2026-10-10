@@ -78,6 +78,27 @@ data class Settings(
     // ---- alpha 1.8 ----
     /** My walker on the Track (see [AvatarCode]); null until chosen, then a steady look derived from the install id is used. */
     val avatarCode: Int? = null,
+    // ---- alpha 2.0 ----
+    /** Track scenery, see [com.walkbuddy.domain.TrackTheme]. */
+    val trackTheme: String = "metro",
+    /** Pace coaching mode name (see CoachMode). Off by default. */
+    val coachMode: String = "Off",
+    /** Opt-in weather suggestion on Home. Off by default: it sends a rounded location to Open-Meteo. */
+    val weatherOn: Boolean = false,
+    val weatherCache: String = "",
+    val weatherCacheMs: Long = 0,
+    /** Encoded walk reminders, see WalkReminders.encode. */
+    val reminders: String = "",
+    val reminderPartnerText: Boolean = true,
+    val reminderSkipDays: String = "",
+    /** The interrupted walk to offer to resume, see ResumeCodec. Empty when there is none. */
+    val resumeJson: String = "",
+    /** Include the route outline on the shareable summary card. Off by default. */
+    val cardRoute: Boolean = false,
+    /** Health Connect: also write finished walks as exercise sessions (needs healthConnectOn). */
+    val hcWrite: Boolean = true,
+    val hcWritten: String = "",
+    val showCoachHint: Boolean = true,
 ) {
     /** The look shown for me on the Track. */
     val avatar: Avatar get() = AvatarCode.of(avatarCode, peerId.ifBlank { "me" })
@@ -133,6 +154,18 @@ class SettingsStore(private val context: Context) {
         val saveRoutes = booleanPreferencesKey("save_routes")
         val batterySaver = booleanPreferencesKey("battery_saver")
         val avatar = intPreferencesKey("avatar_code")
+        val trackTheme = stringPreferencesKey("track_theme")
+        val coachMode = stringPreferencesKey("coach_mode")
+        val weatherOn = booleanPreferencesKey("weather_on")
+        val weatherCache = stringPreferencesKey("weather_cache")
+        val weatherCacheMs = longPreferencesKey("weather_cache_ms")
+        val reminders = stringPreferencesKey("reminders")
+        val reminderPartner = booleanPreferencesKey("reminder_partner_text")
+        val reminderSkip = stringPreferencesKey("reminder_skip_days")
+        val resume = stringPreferencesKey("resume_state")
+        val cardRoute = booleanPreferencesKey("card_route")
+        val hcWrite = booleanPreferencesKey("hc_write")
+        val hcWritten = stringPreferencesKey("hc_written")
         // Background step bookkeeping
         val lastCounter = longPreferencesKey("last_counter")
         val lastCounterT = longPreferencesKey("last_counter_t")
@@ -184,6 +217,18 @@ class SettingsStore(private val context: Context) {
             saveRoutes = p[K.saveRoutes] ?: false,
             batterySaver = p[K.batterySaver] ?: false,
             avatarCode = p[K.avatar]?.takeIf { it in 0..AvatarCode.MAX },
+            trackTheme = p[K.trackTheme] ?: "metro",
+            coachMode = p[K.coachMode] ?: "Off",
+            weatherOn = p[K.weatherOn] ?: false,
+            weatherCache = p[K.weatherCache].orEmpty(),
+            weatherCacheMs = p[K.weatherCacheMs] ?: 0,
+            reminders = p[K.reminders].orEmpty(),
+            reminderPartnerText = p[K.reminderPartner] ?: true,
+            reminderSkipDays = p[K.reminderSkip].orEmpty(),
+            resumeJson = p[K.resume].orEmpty(),
+            cardRoute = p[K.cardRoute] ?: false,
+            hcWrite = p[K.hcWrite] ?: true,
+            hcWritten = p[K.hcWritten].orEmpty(),
         )
     }
 
@@ -248,6 +293,20 @@ class SettingsStore(private val context: Context) {
     suspend fun setSaveRoutes(on: Boolean) = context.settingsDataStore.edit { it[K.saveRoutes] = on }.let { }
     suspend fun setBatterySaver(on: Boolean) = context.settingsDataStore.edit { it[K.batterySaver] = on }.let { }
     suspend fun setAvatar(a: Avatar) = context.settingsDataStore.edit { it[K.avatar] = AvatarCode.encode(a) }.let { }
+    suspend fun setTrackTheme(id: String) = context.settingsDataStore.edit { it[K.trackTheme] = id.take(16) }.let { }
+    suspend fun setCoachMode(name: String) = context.settingsDataStore.edit { it[K.coachMode] = name.take(16) }.let { }
+    suspend fun setWeatherOn(on: Boolean) = context.settingsDataStore.edit {
+        it[K.weatherOn] = on
+        if (!on) { it.remove(K.weatherCache); it.remove(K.weatherCacheMs) }
+    }.let { }
+    suspend fun saveWeather(json: String, ms: Long) = context.settingsDataStore.edit { it[K.weatherCache] = json; it[K.weatherCacheMs] = ms }.let { }
+    suspend fun setReminders(encoded: String) = context.settingsDataStore.edit { it[K.reminders] = encoded }.let { }
+    suspend fun setReminderPartnerText(on: Boolean) = context.settingsDataStore.edit { it[K.reminderPartner] = on }.let { }
+    suspend fun setReminderSkipDays(encoded: String) = context.settingsDataStore.edit { it[K.reminderSkip] = encoded }.let { }
+    suspend fun setResume(json: String) = context.settingsDataStore.edit { if (json.isEmpty()) it.remove(K.resume) else it[K.resume] = json }.let { }
+    suspend fun setCardRoute(on: Boolean) = context.settingsDataStore.edit { it[K.cardRoute] = on }.let { }
+    suspend fun setHcWrite(on: Boolean) = context.settingsDataStore.edit { it[K.hcWrite] = on }.let { }
+    suspend fun setHcWritten(encoded: String) = context.settingsDataStore.edit { it[K.hcWritten] = encoded }.let { }
     suspend fun setRecapSeen(day: Long) = context.settingsDataStore.edit { it[K.recapSeen] = day }.let { }
 
     /** The buddy's progress as last seen during a walk. Only used to place their avatar on today's ring. */

@@ -482,8 +482,70 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         if (dm != null) com.walkbuddy.domain.SharedDemo.build(System.currentTimeMillis()) else d
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun deleteSharedWalk(id: Long) { if (!isDemo && id > 0) viewModelScope.launch { c.repository.deleteSharedWalk(id) } }
-    fun clearSharedWalks() { if (!isDemo) viewModelScope.launch { c.repository.clearSharedWalks() } }
+    fun deleteSharedWalk(id: Long) {
+        if (!isDemo && id > 0) viewModelScope.launch {
+            com.walkbuddy.data.WalkMedia.delete(appContext, c.repository.sharedExtras(id).second)
+            c.repository.deleteSharedWalk(id)
+        }
+    }
+    fun clearSharedWalks() {
+        if (!isDemo) viewModelScope.launch {
+            com.walkbuddy.data.WalkMedia.deleteAll(appContext)
+            c.repository.clearSharedWalks()
+        }
+    }
+
+    /** Note and photo of one history walk (alpha 2.0), loaded on demand. */
+    suspend fun walkExtras(id: Long): Pair<String?, String?> = if (isDemo || id <= 0) null to null else c.repository.sharedExtras(id)
+
+    fun saveWalkNote(id: Long, note: String?) { if (!isDemo && id > 0) viewModelScope.launch { c.repository.setSharedNote(id, note) } }
+
+    fun attachWalkPhoto(id: Long, uri: android.net.Uri, done: (String?) -> Unit) {
+        if (isDemo || id <= 0) { done(null); return }
+        viewModelScope.launch {
+            val old = c.repository.sharedExtras(id).second
+            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.walkbuddy.data.WalkMedia.save(appContext, id, uri) }
+            if (name != null) { if (old != null && old != name) com.walkbuddy.data.WalkMedia.delete(appContext, old); c.repository.setSharedPhoto(id, name) }
+            done(name)
+        }
+    }
+
+    fun removeWalkPhoto(id: Long) {
+        if (isDemo || id <= 0) return
+        viewModelScope.launch {
+            com.walkbuddy.data.WalkMedia.delete(appContext, c.repository.sharedExtras(id).second)
+            c.repository.setSharedPhoto(id, null)
+        }
+    }
+
+    // ---- Challenges (alpha 2.0): local shared goals, progress derived from the walks history ----
+
+    val challengeProgress: StateFlow<List<com.walkbuddy.domain.ChallengeProgress>> = combine(c.repository.challenges, dbShared) { inst, walks ->
+        val cw = com.walkbuddy.domain.Challenges.toWalks(walks, java.time.ZoneId.systemDefault())
+        val today = Clock.today()
+        com.walkbuddy.domain.Challenges.ordered(inst.mapNotNull { com.walkbuddy.domain.Challenges.progress(it, cw, today) })
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Fired once per challenge when its target is first reached. */
+    private val _challengeDone = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val challengeDone: SharedFlow<String> = _challengeDone.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            challengeProgress.collect { list ->
+                list.filter { it.justCompleted }.forEach { p ->
+                    c.repository.completeChallenge(p.instance.id)
+                    _challengeDone.tryEmit(p.template.id)
+                }
+            }
+        }
+    }
+
+    fun startChallenge(templateId: String, done: (Boolean) -> Unit = {}) {
+        viewModelScope.launch { done(c.repository.startChallenge(templateId)) }
+    }
+
+    fun deleteChallenge(id: Long) { viewModelScope.launch { c.repository.deleteChallenge(id) } }
 
     /** My walker on the Track. Sent to buddies as one small number next to my nickname. */
     fun setAvatar(a: com.walkbuddy.domain.Avatar) = saveSettings { setAvatar(a) }
@@ -559,6 +621,7 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
             c.session.leave()
             c.groupSession.cancel()
             c.routes.deleteAll()
+            com.walkbuddy.data.WalkMedia.deleteAll(appContext)
             c.repository.deleteAll()
             c.steps.invalidate()
             done()

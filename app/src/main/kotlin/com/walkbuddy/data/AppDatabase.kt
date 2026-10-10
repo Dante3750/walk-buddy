@@ -157,11 +157,37 @@ interface AppDao {
 
     @Query("DELETE FROM walk_dates")
     suspend fun clearDates()
+
+    // notes and photos on shared walks
+    @Query("UPDATE shared_walks SET note = :note WHERE id = :id")
+    suspend fun setSharedNote(id: Long, note: String?)
+
+    @Query("UPDATE shared_walks SET photo = :photo WHERE id = :id")
+    suspend fun setSharedPhoto(id: Long, photo: String?)
+
+    @Query("SELECT photo FROM shared_walks WHERE photo IS NOT NULL")
+    suspend fun allPhotos(): List<String>
+
+    // challenges
+    @Query("SELECT * FROM challenges ORDER BY startDay DESC, id DESC")
+    fun challenges(): Flow<List<ChallengeEntity>>
+
+    @Insert
+    suspend fun insertChallenge(c: ChallengeEntity): Long
+
+    @Query("UPDATE challenges SET completedMs = :ms WHERE id = :id AND completedMs IS NULL")
+    suspend fun completeChallenge(id: Long, ms: Long)
+
+    @Query("DELETE FROM challenges WHERE id = :id")
+    suspend fun deleteChallenge(id: Long)
+
+    @Query("DELETE FROM challenges")
+    suspend fun clearChallenges()
 }
 
 @Database(
-    entities = [DayEntity::class, WalkEntity::class, SpotEntity::class, DateEntity::class, HourEntity::class, MoodEntity::class, BadgeEntity::class, StepStateEntity::class, SharedWalkEntity::class],
-    version = 4,
+    entities = [DayEntity::class, WalkEntity::class, SpotEntity::class, DateEntity::class, HourEntity::class, MoodEntity::class, BadgeEntity::class, StepStateEntity::class, SharedWalkEntity::class, ChallengeEntity::class],
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -192,6 +218,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** alpha 1.8 to 2.0: notes and photos on shared walks, plus the local challenges table. Existing rows are kept. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE shared_walks ADD COLUMN note TEXT")
+                db.execSQL("ALTER TABLE shared_walks ADD COLUMN photo TEXT")
+                db.execSQL(CREATE_CHALLENGES)
+            }
+        }
+
+        const val CREATE_CHALLENGES =
+            "CREATE TABLE IF NOT EXISTS challenges (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, templateId TEXT NOT NULL, " +
+                "startDay INTEGER NOT NULL, endDay INTEGER NOT NULL, completedMs INTEGER)"
+
         /** Kept as a constant so a test can check it against the entity. Column types match what Room expects for SharedWalkEntity. */
         const val CREATE_SHARED_WALKS =
             "CREATE TABLE IF NOT EXISTS shared_walks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, startMs INTEGER NOT NULL, " +
@@ -201,7 +240,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "walkbuddy.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }
