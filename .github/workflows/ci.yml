@@ -123,14 +123,18 @@ jobs:
 
   # Renders every main screen to PNG with Paparazzi (JVM, no emulator) so the UI can be reviewed without a phone.
   # Separate from the `android` job and allowed to fail: it never blocks the green build.
-  # Uploads the PNGs as the `screenshots` workflow artifact. It never pushes a branch or a tag.
+  # Uploads the PNGs as the `screenshots` artifact. On a push to main it also copies the curated, downscaled PNGs to
+  # docs/screens/ and commits them straight to main ([skip ci], only when they changed). No branch or tag is created.
   screenshots:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 40
     permissions:
-      contents: read
+      contents: write
+    concurrency:
+      group: publish-screens
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -179,3 +183,15 @@ jobs:
             shots.log
             app/build/reports/tests/
           if-no-files-found: ignore
+
+      - name: Publish screenshots to docs/screens on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
+        run: |
+          scripts/publish-screens.sh
+          git add docs/screens
+          if git diff --cached --quiet; then echo "Screenshots unchanged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: refresh screenshots from CI [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
