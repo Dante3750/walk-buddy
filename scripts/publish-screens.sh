@@ -59,4 +59,7 @@ for line in $MAP; do
   $IM "$src" -resize 540x -strip -colors 160 PNG8:"$dest/$name.png" && n=$((n+1)) || echo "::warning title=publish-screens::convert failed for $name"
   ls -l "$dest/$name.png" | awk '{print $5, $9}'
 done
+if [ -f "$dest/settings.png" ]; then  # top of Settings = Battery card
+  $IM "$dest/settings.png" -crop 540x1060+0+0 +repage -colors 128 PNG8:"$dest/settings-battery.png"
+fi
 echo "::notice title=publish-screens::published $n screens"
