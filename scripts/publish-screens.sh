@@ -4,6 +4,10 @@
 set -u
 dest=docs/screens
 mkdir -p "$dest"
+if ! command -v convert >/dev/null && ! command -v magick >/dev/null; then
+  sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends imagemagick >/dev/null
+fi
+IM=convert; command -v convert >/dev/null || IM="magick"
 # name=test method (Paparazzi names files <package>_<Class>_<method>[_<label>].png)
 MAP="
 home=home_light
@@ -47,12 +51,12 @@ find_png() {
   done
 }
 n=0
-echo "::notice title=publish-screens::snapshots: $(find app/src/test/snapshots app/build/reports/paparazzi -name '*.png' 2>/dev/null | wc -l) png, convert: $(command -v convert || echo none)"
+echo "::notice title=publish-screens::snapshots: $(find app/src/test/snapshots app/build/reports/paparazzi -name '*.png' 2>/dev/null | wc -l) png, imagemagick: $(command -v convert || command -v magick || echo none)"
 for line in $MAP; do
   name="${line%%=*}"; method="${line#*=}"
   src=$(find_png "$method")
   if [ -z "$src" ]; then echo "::warning title=publish-screens::missing $method"; continue; fi
-  convert "$src" -resize 540x -strip -colors 160 PNG8:"$dest/$name.png" && n=$((n+1))
+  $IM "$src" -resize 540x -strip -colors 160 PNG8:"$dest/$name.png" && n=$((n+1)) || echo "::warning title=publish-screens::convert failed for $name"
   ls -l "$dest/$name.png" | awk '{print $5, $9}'
 done
 echo "::notice title=publish-screens::published $n screens"
