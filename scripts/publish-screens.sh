@@ -46,8 +46,8 @@ find_png() {
   local m="$1" f
   for root in app/src/test/snapshots/images app/build/reports/paparazzi; do
     [ -d "$root" ] || continue
-    f=$(find "$root" -name "*_${m}.png" | head -n1); [ -n "$f" ] && { echo "$f"; return; }
-    f=$(find "$root" -name "*_${m}_*.png" | head -n1); [ -n "$f" ] && { echo "$f"; return; }
+    f=$(find "$root" -name "*Test_${m}.png" | head -n1); [ -n "$f" ] && { echo "$f"; return; }
+    f=$(find "$root" -name "*Test_${m}_*.png" | head -n1); [ -n "$f" ] && { echo "$f"; return; }
   done
 }
 n=0
