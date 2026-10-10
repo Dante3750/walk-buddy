@@ -13,7 +13,19 @@ enum class AvatarStyle(val code: Int, val label: String) {
     }
 }
 
-data class Avatar(val style: AvatarStyle, val colorIndex: Int) {
+/**
+ * A small extra drawn on the walker (alpha 2.0). It travels in the two spare high bits of [AvatarCode], so an older app that does not know
+ * about accessories simply shows the plain walker. All three are original line art.
+ */
+enum class AvatarAccessory(val code: Int, val label: String) {
+    None(0, "Plain"), Cap(1, "Cap"), Backpack(2, "Backpack"), Scarf(3, "Scarf");
+
+    companion object {
+        fun fromCode(c: Int): AvatarAccessory = values().firstOrNull { it.code == c } ?: None
+    }
+}
+
+data class Avatar(val style: AvatarStyle, val colorIndex: Int, val accessory: AvatarAccessory = AvatarAccessory.None) {
     init { require(colorIndex in 0 until AvatarPalette.SIZE) { "colour index out of range" } }
 
     companion object {
@@ -29,13 +41,13 @@ object AvatarPalette {
 object AvatarCode {
     const val MAX = 255
 
-    /** bits 0-1 style, bits 2-5 colour index. Always in 0..63. */
-    fun encode(a: Avatar): Int = a.style.code or (a.colorIndex shl 2)
+    /** bits 0-1 style, bits 2-5 colour index, bits 6-7 accessory (alpha 2.0; older apps ignore them). Always in 0..255. */
+    fun encode(a: Avatar): Int = a.style.code or (a.colorIndex shl 2) or (a.accessory.code shl 6)
 
     /** Null for "not chosen" or anything out of range. A colour index past the palette wraps, an unknown style becomes round. */
     fun decode(code: Int?): Avatar? {
         if (code == null || code !in 0..MAX) return null
-        return Avatar(AvatarStyle.fromCode(code and 3), ((code shr 2) and 15) % AvatarPalette.SIZE)
+        return Avatar(AvatarStyle.fromCode(code and 3), ((code shr 2) and 15) % AvatarPalette.SIZE, AvatarAccessory.fromCode((code shr 6) and 3))
     }
 
     /** A steady look for someone who did not choose one (an older app version): round, with a colour from their id. */
