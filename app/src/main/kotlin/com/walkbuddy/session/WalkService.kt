@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.walkbuddy.R
 import com.walkbuddy.WalkBuddyApplication
 import com.walkbuddy.domain.Format
 import com.walkbuddy.notify.LiveUpdate
@@ -56,6 +57,7 @@ class WalkService : Service() {
             var lastAt = 0L
             var lastStage: Triple<Boolean, Phase, Boolean>? = null
             val widgetPrefs = getSharedPreferences("wb_widget", Context.MODE_PRIVATE)
+            val unit = runCatching { container.settings.current().unitSystem }.getOrDefault(com.walkbuddy.domain.UnitSystem.Metric)
             combine(session.ui, group.ui) { s, g -> s to g }.collect { (ui, g) ->
                 val groupOn = g.phase == GroupPhase.Active && !g.demo
                 if ((ui.phase == Phase.Idle || ui.phase == Phase.Summary) && !groupOn) {
@@ -64,12 +66,18 @@ class WalkService : Service() {
                     return@collect
                 }
                 val gw = g.walk
+                // "Meera is 300 m away", only for a walk with one buddy who has a position.
+                val buddy = if (groupOn || ui.phase != Phase.Walking) null else ui.walk?.buddies?.firstOrNull { it.distanceM != null }
+                val partnerLine = buddy?.distanceM?.let { d -> getString(R.string.walk_partner_away, buddy.name.ifBlank { getString(R.string.walk_buddy_fallback) }, com.walkbuddy.domain.Units.distance(d, unit)) }
+                val widgetLine = if (ui.demo) null else partnerLine
                 val text = when {
                     groupOn -> if (gw == null) "Joining the group" else "Group walk, ${gw.memberCount} people, ${Format.distance(gw.myDistanceM)}"
                     ui.phase == Phase.Lobby -> if (ui.solo) "Ready to walk" else "Waiting for your buddy"
                     else -> {
                         val w = ui.walk
-                        if (w == null) "Walking" else "Walking, ${Format.distance(w.myDistanceM)}"
+                        if (w == null) "Walking"
+                        else if (partnerLine != null) getString(R.string.walk_notif_partner, Format.distance(w.myDistanceM), partnerLine)
+                        else "Walking, ${Format.distance(w.myDistanceM)}"
                     }
                 }
                 val now = System.currentTimeMillis()
@@ -82,13 +90,14 @@ class WalkService : Service() {
                 val due = lastAt == 0L || now < lastAt || now - lastAt >= container.power.plan().walkNotifyMs
                 if (stage != lastStage || (due && (text != lastText || live))) {
                     lastStage = stage
+                    com.walkbuddy.notify.WidgetBridge.publishPartner(this@WalkService, widgetLine)
                     lastText = text
                     lastAt = now
                     val goal = widgetPrefs.getInt("goal", 6000).coerceAtLeast(500)
                     val steps = mySteps?.toInt() ?: 0
                     val pct = if (live) (steps * 100L / goal).toInt().coerceIn(0, 100) else null
                     val nm = getSystemService(android.app.NotificationManager::class.java)
-                    nm?.notify(Notifications.ID_WALK, Notifications.walkOngoing(this@WalkService, text, stop, pct, if (live) "%,d".format(steps) else null))
+                    nm?.notify(Notifications.ID_WALK, Notifications.walkOngoing(this@WalkService, text, stop, pct, if (live) (buddy?.distanceM?.let { com.walkbuddy.domain.Units.distance(it, unit) } ?: "%,d".format(steps)) else null))
                 }
             }
         }
@@ -96,6 +105,7 @@ class WalkService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { com.walkbuddy.notify.WidgetBridge.publishPartner(this, null) }
         scope.cancel()
         super.onDestroy()
     }

@@ -53,15 +53,17 @@ class StepsWidget : GlanceAppWidget() {
         val goal = prefs.getInt("goal", 6000).coerceAtLeast(500)
         val fraction = (steps.toFloat() / goal).coerceIn(0f, 1f)
         val ring = renderRing(fraction)
+        // A partner line only while a walk together is running (the app clears it at the end; a stale one is ignored after 3 minutes).
+        val partner = prefs.getString("partner_text", null)?.takeIf { System.currentTimeMillis() - prefs.getLong("partner_at", 0L) < 180_000L }
         val open = Intent().setClassName(context.packageName, "com.walkbuddy.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         provideContent {
-            Content(ring, String.format(Locale.US, "%,d", steps), String.format(Locale.US, "of %,d", goal), (fraction * 100).toInt(), open)
+            Content(ring, String.format(Locale.US, "%,d", steps), String.format(Locale.US, "of %,d", goal), (fraction * 100).toInt(), open, partner)
         }
     }
 
     @Composable
-    private fun Content(ring: Bitmap, number: String, caption: String, percent: Int, open: Intent) {
+    private fun Content(ring: Bitmap, number: String, caption: String, percent: Int, open: Intent, partner: String?) {
         val ink = ColorProvider(day = ComposeColor(0xFF2A1B2E), night = ComposeColor(0xFFF3E8F0))
         val soft = ColorProvider(day = ComposeColor(0xFF4F4254), night = ComposeColor(0xFFD3C3D0))
         Box(
@@ -79,6 +81,7 @@ class StepsWidget : GlanceAppWidget() {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(number, style = TextStyle(color = ink, fontSize = 30.sp, fontWeight = FontWeight.Bold))
                 Text(caption, style = TextStyle(color = soft, fontSize = 12.sp))
+                if (partner != null) Text(partner, style = TextStyle(color = soft, fontSize = 11.sp, fontWeight = FontWeight.Medium))
             }
         }
     }

@@ -63,6 +63,26 @@ jobs:
           set -o pipefail
           gradle :app:assembleDebug --stacktrace 2>&1 | tee build.log
 
+      - name: Assemble release APK (non-blocking)
+        id: release
+        continue-on-error: true
+        env:
+          # Optional repository secrets. Without them the release APK is debug-signed (fine for testing, not for publishing).
+          WB_KEYSTORE_PASSWORD: ${{ secrets.WB_KEYSTORE_PASSWORD }}
+          WB_KEY_ALIAS: ${{ secrets.WB_KEY_ALIAS }}
+          WB_KEY_PASSWORD: ${{ secrets.WB_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --stacktrace 2>&1 | tee release.log
+
+      - name: Upload release APK
+        if: steps.release.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-buddy-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
       - name: Lint (non-blocking)
         continue-on-error: true
         run: |
@@ -79,7 +99,7 @@ jobs:
         if: always()
         run: |
           # Prints compiler errors as annotations so they can be read without signing in.
-          for f in build.log domain-test.log health-connect.log; do scripts/ci-summarize.sh "$f"; done
+          for f in build.log domain-test.log health-connect.log release.log; do scripts/ci-summarize.sh "$f"; done
 
       - name: Upload debug APK
         if: success()

@@ -236,4 +236,8 @@
     <string name="hc_rationale_title">हेल्थ कनेक्ट क्यों?</string>
     <string name="hc_rationale_body">वॉक बडी आज के कदम सिर्फ़ अपनी गिनती से तुलना करने के लिए पढ़ने की, और हर पूरी हुई सैर को उसकी दूरी के साथ व्यायाम सत्र के रूप में लिखने की अनुमति माँगता है। यह वैकल्पिक है और डिफ़ॉल्ट रूप से बंद है। कुछ भी कहीं नहीं भेजा जाता; हेल्थ कनेक्ट डेटा आपके फ़ोन पर रखता है और आप कभी भी पहुँच हटा सकते हैं।</string>
     <string name="hc_rationale_ok">समझ गया</string>
+
+    <string name="walk_notif_partner">सैर जारी, %1$s। %2$s</string>
+    <string name="walk_partner_away">%1$s %2$s दूर हैं</string>
+    <string name="walk_buddy_fallback">आपका साथी</string>
 </resources>

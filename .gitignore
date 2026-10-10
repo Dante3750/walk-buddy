@@ -10,3 +10,9 @@ node_modules/
 
 # Paparazzi output (rendered in CI and uploaded as a CI workflow artifact, not committed)
 app/src/test/snapshots/
+
+# Signing material is yours alone: never commit it
+*.jks
+*.keystore
+keystore.properties
+release-signing.properties

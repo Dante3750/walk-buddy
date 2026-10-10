@@ -13,6 +13,21 @@ plugins {
 val widgetEnabled = (project.findProperty("widget") as String?) != "false"
 val healthConnectEnabled = (project.findProperty("healthConnect") as String?) == "true"
 
+// Release signing comes from environment variables or from local.properties (both stay on your machine, never in git):
+//   WB_KEYSTORE_PATH / wb.keystore.path, WB_KEYSTORE_PASSWORD / wb.keystore.password, WB_KEY_ALIAS / wb.key.alias, WB_KEY_PASSWORD / wb.key.password
+// Without them the release build is signed with the debug key so CI and local `assembleRelease` still work (such an APK is for testing only).
+val localProps = java.util.Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(env: String, prop: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: localProps.getProperty(prop)?.takeIf { it.isNotBlank() }
+val releaseStorePath = signingValue("WB_KEYSTORE_PATH", "wb.keystore.path")
+val releaseStorePassword = signingValue("WB_KEYSTORE_PASSWORD", "wb.keystore.password")
+val releaseKeyAlias = signingValue("WB_KEY_ALIAS", "wb.key.alias")
+val releaseKeyPassword = signingValue("WB_KEY_PASSWORD", "wb.key.password") ?: releaseStorePassword
+val hasReleaseKey = releaseStorePath != null && releaseStorePassword != null && releaseKeyAlias != null && file(releaseStorePath).exists()
+
 android {
     namespace = "com.walkbuddy"
     compileSdk = 35
@@ -21,9 +36,20 @@ android {
         applicationId = "com.walkbuddy"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.8.0-alpha"
+        versionCode = 8
+        versionName = "2.0.0-alpha"
         buildConfigField("boolean", "HEALTH_CONNECT", healthConnectEnabled.toString())
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(releaseStorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -31,7 +57,13 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
+    }
+
+    lint {
+        // Lint runs as its own non-blocking CI step; it must not be able to stop a release build.
+        checkReleaseBuilds = false
     }
 
     compileOptions {

@@ -19,6 +19,23 @@ object WidgetBridge {
     @Volatile private var lastGoal = -1
     @Volatile private var lastAt = 0L
 
+    @Volatile private var lastPartnerText: String? = null
+
+    /** While a walk with a buddy is going: a short line like "Meera is 300 m away" for the widget. Cleared (null) when the walk ends. */
+    fun publishPartner(context: Context, text: String?) {
+        if (text == lastPartnerText && text != null) return
+        lastPartnerText = text
+        val app = context.applicationContext
+        val e = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        if (text == null) e.remove("partner_text").remove("partner_at") else e.putString("partner_text", text).putLong("partner_at", System.currentTimeMillis())
+        e.apply()
+        runCatching {
+            val cn = ComponentName(app.packageName, RECEIVER)
+            val ids = AppWidgetManager.getInstance(app).getAppWidgetIds(cn)
+            if (ids.isNotEmpty()) app.sendBroadcast(Intent(ACTION_REFRESH).setComponent(cn))
+        }
+    }
+
     fun publish(context: Context, steps: Int, goal: Int, name: String, force: Boolean = false) {
         val now = System.currentTimeMillis()
         val similar = lastGoal == goal && kotlin.math.abs(steps - lastSteps) < 25 && now - lastAt < 60_000

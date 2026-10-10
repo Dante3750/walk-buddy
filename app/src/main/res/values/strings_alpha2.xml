@@ -236,4 +236,8 @@
     <string name="hc_rationale_title">Why Health Connect?</string>
     <string name="hc_rationale_body">Walk Buddy asks to read today\'s steps, only to compare them with its own count, and to write each finished walk as an exercise session with its distance. This is optional and off by default. Nothing is sent anywhere; Health Connect keeps the data on your phone and you can remove access at any time.</string>
     <string name="hc_rationale_ok">Got it</string>
+
+    <string name="walk_notif_partner">Walking, %1$s. %2$s</string>
+    <string name="walk_partner_away">%1$s is %2$s away</string>
+    <string name="walk_buddy_fallback">Your buddy</string>
 </resources>
