@@ -19,3 +19,7 @@ Send the file (chat, email, cloud drive). On the receiving phone, open it and al
 ## Server
 
 The app talks to the built-in server `wss://walk-buddy-server-sxpz.onrender.com`; friends need no setup. It sleeps when idle, so the first group or partner connection can take up to a minute.
+
+## Release APK
+
+For a friendlier build than the debug APK, make a keystore with `scripts/make-release-keystore.sh` (kept outside the repo, never commit it), export the four `WB_KEYSTORE_PATH`, `WB_KEYSTORE_PASSWORD`, `WB_KEY_ALIAS`, `WB_KEY_PASSWORD` variables or put them in `local.properties`, then run `./gradlew :app:assembleRelease`. The file is `app/build/outputs/apk/release/app-release.apk`. Without a keystore it is signed with the debug key. CI also publishes an `assembleRelease` artifact. Updates are manual: friends install the new APK over the old one (same signing key) or use **About, Check for updates** which opens the GitHub releases page.

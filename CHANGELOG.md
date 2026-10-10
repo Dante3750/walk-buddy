@@ -1,5 +1,22 @@
 # Changelog
 
+## alpha 2.0 (2.0.0-alpha)
+
+In-app improvements, no server change. Compiled and tested on CI (domain 515 tests, server 60 tests); nothing was run on a phone.
+
+- Self-check screen, redacted local diagnostics log with Export diagnostics (share sheet, no upload).
+- Resume a walk after the app is killed (snapshot every ~20 s, resume or discard on launch).
+- Meeting-point navigation (distance, bearing, ETA) and live compass arrow; group pins are host-only.
+- Local challenges (Room, database 4 to 5 with a migration), couple streaks with rest tokens, celebration.
+- Walk reminders with snooze, can't today and skip; pace coaching policy.
+- Opt-in weather suggestion (Open-Meteo, rounded to 0.1 degree, cached 3 h, no background polling).
+- Track themes, avatar accessories, shareable summary card (route hidden by default), walk notes and photos.
+- Widget partner line, Android 16 live-update chip, opt-in Health Connect compare and write.
+- Hindi strings for all new screens, in-app language picker, locales config.
+- Release readiness: R8, env or local.properties signing with debug fallback, keystore script and guide, CI release artifact, About screen with manual update check.
+- Paparazzi screenshot coverage for the new screens.
+- Skipped: TURN relay and an always-on server (server and hosting are unchanged).
+
 ## alpha 1.8 (1.8.0-alpha)
 
 Partner link rewrite, Track view, Walks together history, map fixes and a bug hunt. Compiled and tested on CI (domain 408 tests, server 60 tests); nothing was run on a phone.

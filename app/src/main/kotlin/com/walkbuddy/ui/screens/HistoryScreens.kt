@@ -156,7 +156,7 @@ private fun Total(big: String, small: String) {
 }
 
 @Composable
-private fun WalkRow(r: SharedWalkRecord, unit: UnitSystem, onClick: () -> Unit) {
+internal fun WalkRow(r: SharedWalkRecord, unit: UnitSystem, onClick: () -> Unit) {
     val title = SharedHistory.title(r)
     val day = SharedHistory.dayTitle(r)
     Surface(

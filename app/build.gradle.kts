@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,7 +18,7 @@ val healthConnectEnabled = (project.findProperty("healthConnect") as String?) ==
 // Release signing comes from environment variables or from local.properties (both stay on your machine, never in git):
 //   WB_KEYSTORE_PATH / wb.keystore.path, WB_KEYSTORE_PASSWORD / wb.keystore.password, WB_KEY_ALIAS / wb.key.alias, WB_KEY_PASSWORD / wb.key.password
 // Without them the release build is signed with the debug key so CI and local `assembleRelease` still work (such an APK is for testing only).
-val localProps = java.util.Properties().apply {
+val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }

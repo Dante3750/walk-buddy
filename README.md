@@ -22,6 +22,22 @@ Walking is better with someone, but most step apps are built for streaks and lea
 
 ## Features
 
+**New in alpha 2.0** (all on your phone; nothing needs an account)
+- **Self-check** (Settings, Help): one screen that tests permissions, sensor, battery optimisation, notifications, network and the server `/health`, with a fix button per row. Privacy: only the server health request leaves the phone.
+- **Diagnostics log**: a small local ring buffer with names, codes and coordinates redacted. **Export diagnostics** opens the share sheet; nothing is uploaded.
+- **Resume after the app is killed**: a snapshot of the running walk is saved every ~20 s; on next launch you can resume or discard it, and distance, steps and time are merged into the summary.
+- **Meeting-point navigation and compass arrow**: live distance, bearing and ETA to the pin (partner pins sync over the existing pin message; in groups only the host can set the pin). Privacy: the compass uses the phone's orientation sensor only.
+- **Challenges** (Home or Couple, Challenges): local goals such as a weekly step total or a walking streak, stored in Room. Pick a template, set a target, and a celebration appears when you finish. Couple challenges are counted on each phone.
+- **Walk reminders** (Settings, Reminders): an evening nudge with **Snooze**, **Can't today** and **Skip**; you choose the days and whether to mention your partner. Local notifications only.
+- **Pace coaching**: optional gentle cue during a walk (steady, a little faster, ease off), based on your pace only.
+- **Weather suggestion** (opt-in): asks Open-Meteo for a walking hint. Your location is rounded to 0.1 degree (about 10 km), cached 3 hours, never polled in the background. Off by default.
+- **Themes and avatars**: Track themes (meadow, dusk, night, and more) and avatar accessories.
+- **Summary card**: share a picture of a finished walk; the route is hidden by default.
+- **Couple streaks** with rest tokens, **walk notes and a photo** per shared walk (stored on the phone), widget partner line and an Android 16 live-update chip.
+- **Health Connect** (opt-in, build flag): compare your steps with Health Connect and optionally write walks; HC steps are never added to yours.
+- **Hindi**: new screens are translated; pick the language in Settings (Android 13+ uses the system per-app language).
+- **About** with a manual **Check for updates** that only opens the GitHub releases page.
+
 **Steps hero**
 - One huge, centred step count that counts up inside an animated gradient ring, with a goal marker and a glow while you walk.
 - *Verified* steps next to raw sensor steps: vehicle and bicycle time and impossible bursts are left out.
@@ -148,6 +164,21 @@ The app uses one **built-in server**, `wss://walk-buddy-server-sxpz.onrender.com
 
 **Self-hosting:** run the server in [`server/`](server/README.md) (`cd server && npm install && npm start`, or Docker, behind TLS), then change the single constant `ServerConfig.URL` (and `HEALTH_URL`) in `domain/src/main/kotlin/com/walkbuddy/domain/ServerConfig.kt` and rebuild the app. To share a build with friends see [`docs/SHARING.md`](docs/SHARING.md).
 
+### Challenges and reminders
+
+- **Challenges:** Home (or Couple), **Challenges**, choose a template, set the target and the days, **Start**. Progress is computed from your own step history. Delete a challenge any time.
+- **Reminders:** Settings, **Reminders**, switch on, pick the time and days. In the notification tap **Snooze** (1 h), **Can't today** (skips today, keeps your streak token rules) or **Skip**. Android 13+ asks for notification permission once.
+
+### Build a signed release
+
+```bash
+scripts/make-release-keystore.sh      # creates a keystore OUTSIDE the repo, see scripts/make-release-keystore.md
+export WB_KEYSTORE_PATH=/path/to/walkbuddy.jks WB_KEYSTORE_PASSWORD=... WB_KEY_ALIAS=... WB_KEY_PASSWORD=...
+./gradlew :app:assembleRelease
+```
+
+The same four values can go in `local.properties` (git-ignored). Without them the release build is signed with the debug key so it still installs. Never commit a keystore. Release builds use R8 shrinking (`app/proguard-rules.pro`). CI also builds `assembleRelease` and uploads it as an artifact.
+
 ### Join a group walk
 
 1. **Scan:** Home, Open group walk, Join a group, **Scan a QR code**. Camera permission is asked only there.
@@ -171,9 +202,9 @@ Partner mode: phones swap WebRTC offers through the server, then talk directly; 
 Tests and CI:
 
 ```bash
-./gradlew :domain:test                 # 340 tests
+./gradlew :domain:test                 # 515 tests
 scripts/domain-test-offline.sh         # same tests with only the jars inside a Gradle distribution
-cd server && npm test                  # 49 tests
+cd server && npm test                  # 60 tests
 ```
 
 CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:domain:test`, `:app:assembleDebug` and lint (reported, not blocking), uploads the debug APK, and renders every screen with Paparazzi in a separate non-blocking job (the `screenshots` artifact). It never pushes a branch or a tag.
@@ -184,7 +215,8 @@ CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:
 - **Trust.** Anyone with the code or QR can join an open group unless the host approves each person, so share it only with people you trust. The server operator can see IP addresses and traffic while it passes through; the built-in server is a free personal host; self-host if you need more control. STUN uses Google's public servers by default.
 - **Not tested on a device.** No phone has run this build. GPS behaviour, the foreground service, haptics, QR scanning, map gestures, OSM tiles and WebRTC connectivity are untested.
 - **No TURN relay.** The direct channel uses STUN only, by design. On carrier-grade NAT and strict Wi-Fi it can fail; the walk then runs through the server relay (tiny updates only, nothing stored). Neither path has been tested between two real phones.
-- **Health Connect** (`-PhealthConnect=true`) is optional and currently fails to build in KSP (non-blocking in CI).
+- **Health Connect** (`-PhealthConnect=true`) is optional and its CI step is non-blocking; it is unverified on a device.
+- **Alpha 2.0 features are untested on a phone**: resume, compass, reminders, weather, notes and photos, widget and live-update chip compile and have unit tests only.
 - **Calorie table** values were transcribed from memory of the 2011 Compendium of Physical Activities; verify them against the published tables.
 - **Steps outside walks** are only plausibility-checked; vehicle filtering needs GPS and applies during walks.
 - The built-in server is a free host: it sleeps when idle (first connection up to ~1 minute) and has no uptime guarantee.
@@ -193,9 +225,8 @@ CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:
 ## Roadmap
 
 - First real-device pass: GPS jitter and nudge thresholds, pairing, group walks.
-- Walk restore after the app process is killed mid-walk (the finished part is not resumed today).
 - BLE heart-rate strap and a walking-steadiness trend (opt-in).
-- Baseline profile, group-screen screenshot tests, full Hindi translation.
+- Baseline profile, full Hindi translation of older screens.
 
 ## Contributing
 
