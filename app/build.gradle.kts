@@ -98,6 +98,8 @@ dependencies {
 
     if (healthConnectEnabled) {
         implementation(libs.health.connect)
+        // connect-client exposes ListenableFuture in its API; this tiny artifact puts the class on the compile classpath.
+        implementation("com.google.guava:listenablefuture:1.0")
     }
 
     testImplementation(libs.junit)

@@ -606,7 +606,7 @@ class GroupSession(
             if (summary.durationMs >= 20_000) {
                 // Saved like a solo walk, so a group never counts as a couple walk in "Our week" or the couple odometer.
                 walkId = repo.saveWalk(summary.copy(buddyCount = 0, togetherPct = null, longestTogetherMs = 0), walkStartMs)
-                if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
+                com.walkbuddy.health.HealthSync.writeWalkIfNew(health, settingsStore, settings, walkStartMs, now, summary.verifiedSteps, summary.distanceM)
             }
             finishedRoute?.let { r -> if (settings.saveRoutes) routes.save(walkStartMs, r.points) }
             saveSharedWalk(finishedRecorder, finishedRoute, summary, now)

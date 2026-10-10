@@ -34,6 +34,11 @@
     <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Lets the optional Health Connect support see whether the provider app is installed. -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
     <application
         android:name=".WalkBuddyApplication"
         android:allowBackup="false"

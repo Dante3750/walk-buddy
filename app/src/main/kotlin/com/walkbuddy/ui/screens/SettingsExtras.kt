@@ -180,3 +180,13 @@ internal fun CoachSection(a: SettingsActions, s: Settings) {
         Disclaimer(stringResource(R.string.coach_note))
     }
 }
+
+
+/** Opt-in weather suggestion. Off by default; the text says exactly what is sent. */
+@Composable
+internal fun WeatherSection(a: SettingsActions, s: Settings) {
+    SectionCard(stringResource(R.string.wx_settings_title)) {
+        ToggleRow(stringResource(R.string.wx_toggle), stringResource(R.string.wx_toggle_sub), s.weatherOn) { on -> a.save { setWeatherOn(on) } }
+        Disclaimer(stringResource(R.string.wx_privacy))
+    }
+}

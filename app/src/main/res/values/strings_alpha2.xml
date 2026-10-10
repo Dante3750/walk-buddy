@@ -207,4 +207,33 @@
     <string name="coach_ease">You are a little ahead. Easing off a touch keeps everyone together.</string>
     <string name="coach_slowest">Walking at the slower person\'s pace: ease off a little.</string>
     <string name="coach_pickup">The others are a touch ahead. Only if you feel like it, a slightly quicker step may help.</string>
+
+    <string name="wx_title">Best time to walk today</string>
+    <string name="wx_window">%1$s to %2$s</string>
+    <string name="wx_detail">About %1$s, %2$d%% chance of rain</string>
+    <string name="wx_pleasant">Mild and dry, a pleasant window.</string>
+    <string name="wx_cool">Cool and dry. A jacket and you are set.</string>
+    <string name="wx_dry">The driest stretch of the day.</string>
+    <string name="wx_least_rain">Rain is likely today; this is the best-looking gap.</string>
+    <string name="wx_heat">It is warm today; this is the coolest stretch. Carry water.</string>
+    <string name="wx_fallback">The best-looking window in today\'s forecast.</string>
+    <string name="wx_settings_title">Weather suggestion</string>
+    <string name="wx_toggle">Suggest a good time to walk</string>
+    <string name="wx_toggle_sub">Off by default. Shows a card on Today with the best hours for a walk.</string>
+    <string name="wx_privacy">When on, Walk Buddy asks Open-Meteo (a free weather service, no account or key) for today\'s forecast when you open Today, at most once every 3 hours. The only thing sent is your location rounded to about 10 km, plus the usual internet details your connection shows any website. Nothing is sent in the background, and if you are offline the card just does not appear. Turning this off clears the saved forecast.</string>
+
+    <string name="hc_title">Health Connect (optional)</string>
+    <string name="hc_not_in_build">Not included in this build. Build with -PhealthConnect=true to add it. Walk Buddy works fully without it.</string>
+    <string name="hc_toggle">Use Health Connect</string>
+    <string name="hc_toggle_sub">Off by default. Lets Walk Buddy compare today\'s steps with Health Connect and save walks to it.</string>
+    <string name="hc_unavailable">Health Connect is not installed or not supported on this phone.</string>
+    <string name="hc_write">Save finished walks</string>
+    <string name="hc_write_sub">Writes each finished walk once, as an exercise session. Never twice.</string>
+    <string name="hc_manage">Manage Health Connect access</string>
+    <string name="hc_open_manually">Open Health Connect from Android settings</string>
+    <string name="hc_note">Steps are never added from Health Connect, so nothing is counted twice. If Health Connect holds clearly more steps, Today just mentions it. It is read only when you open Today.</string>
+    <string name="hc_extra">Health Connect shows %1$s more steps today (other apps or devices). They are not added to your count, so nothing is counted twice.</string>
+    <string name="hc_rationale_title">Why Health Connect?</string>
+    <string name="hc_rationale_body">Walk Buddy asks to read today\'s steps, only to compare them with its own count, and to write each finished walk as an exercise session with its distance. This is optional and off by default. Nothing is sent anywhere; Health Connect keeps the data on your phone and you can remove access at any time.</string>
+    <string name="hc_rationale_ok">Got it</string>
 </resources>

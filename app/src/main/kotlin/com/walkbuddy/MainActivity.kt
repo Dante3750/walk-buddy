@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
         when (intent.action) {
             ACTION_START_SOLO -> viewModel.pendingAction.value = "start_solo"
             ACTION_RECAP -> viewModel.pendingAction.value = "recap"
+            "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" -> viewModel.pendingAction.value = "health_rationale"
         }
     }
 

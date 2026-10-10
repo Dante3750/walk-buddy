@@ -119,6 +119,11 @@ fun HomeScreen(
     val pendingAction by vm.pendingAction.collectAsStateWithLifecycle()
     val celebrated by vm.celebratedToday.collectAsStateWithLifecycle()
     val perms = rememberPermState()
+    val weatherWindow by vm.weather.collectAsStateWithLifecycle()
+    val coupleStreak by vm.coupleStreak.collectAsStateWithLifecycle()
+    LaunchedEffect(settings?.weatherOn) { vm.refreshWeather() }
+    LaunchedEffect(settings?.healthConnectOn) { vm.refreshHealth() }
+    val hcNote by vm.hcNote.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val motion = WbTheme.motion
@@ -197,6 +202,9 @@ fun HomeScreen(
         burst = burst,
         onBurstDone = { burst = false },
         notice = stepsNotice,
+        weather = weatherWindow,
+        hcExtra = hcNote?.extraFromHealthConnect,
+        streak = coupleStreak,
         a = HomeActions(
             onAllowSteps = { askActivity(PermState.ACTIVITY) },
             onOpenAppSettings = { StepTracking.openAppSettings(ctx) },
@@ -324,6 +332,9 @@ fun HomeContent(
     onBurstDone: () -> Unit,
     a: HomeActions,
     notice: StepsNotice = StepsNotice.None,
+    weather: com.walkbuddy.domain.WalkWindow? = null,
+    streak: com.walkbuddy.domain.CoupleStreakInfo? = null,
+    hcExtra: Int? = null,
 ) {
     val header: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -339,7 +350,12 @@ fun HomeContent(
     }
 
     val stepsCard: @Composable () -> Unit = {
-        if (!h.demo) StepsNoticeCard(notice, a)
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!h.demo) StepsNoticeCard(notice, a)
+            if (weather != null) WeatherCard(weather, h.unit)
+            if (hcExtra != null) Disclaimer(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.hc_extra, "%,d".format(hcExtra)))
+            if (streak != null && streak.current > 0) com.walkbuddy.ui.screens.CoupleStreakCard(streak)
+        }
     }
 
     val hero: @Composable () -> Unit = {
@@ -540,5 +556,29 @@ private fun DemoBanner(a: HomeActions) {
                 TextButton(onClick = a.onUseRealData) { Text("Use my real data") }
             }
         }
+    }
+}
+
+
+@Composable
+private fun WeatherCard(w: com.walkbuddy.domain.WalkWindow, unit: com.walkbuddy.domain.UnitSystem) {
+    val fmt = java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT)
+    val from = java.time.LocalTime.of(w.startHour.coerceIn(0, 23), 0).format(fmt)
+    val to = java.time.LocalTime.of(w.endHour.coerceIn(0, 23), 0).format(fmt)
+    val temp = if (unit == com.walkbuddy.domain.UnitSystem.Imperial) "%d\u00B0F".format(Math.round(w.tempC * 9 / 5 + 32)) else "%d\u00B0C".format(Math.round(w.tempC))
+    val why = androidx.compose.ui.res.stringResource(
+        when (w.reason) {
+            com.walkbuddy.domain.WeatherReason.Pleasant -> com.walkbuddy.R.string.wx_pleasant
+            com.walkbuddy.domain.WeatherReason.CoolAndDry -> com.walkbuddy.R.string.wx_cool
+            com.walkbuddy.domain.WeatherReason.DryWindow -> com.walkbuddy.R.string.wx_dry
+            com.walkbuddy.domain.WeatherReason.LeastRain -> com.walkbuddy.R.string.wx_least_rain
+            com.walkbuddy.domain.WeatherReason.AvoidHeat -> com.walkbuddy.R.string.wx_heat
+            com.walkbuddy.domain.WeatherReason.Fallback -> com.walkbuddy.R.string.wx_fallback
+        },
+    )
+    SectionCard(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.wx_title)) {
+        Text(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.wx_window, from, to), style = MaterialTheme.typography.titleMedium)
+        Text(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.wx_detail, temp, w.rainPct), style = MaterialTheme.typography.bodyMedium)
+        Text(why, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

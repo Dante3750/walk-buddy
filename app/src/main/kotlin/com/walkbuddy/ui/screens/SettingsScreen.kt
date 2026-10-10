@@ -223,6 +223,7 @@ fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? 
         WalkSection(a, s)
         CoachSection(a, s)
         MapSection(a, s)
+        WeatherSection(a, s)
         ExtrasSection(a, s)
         HealthSection(a, s)
         DemoSection(a, s)
@@ -408,21 +409,27 @@ private fun HealthSection(a: SettingsActions, s: Settings) {
     val ctx = LocalContext.current
     var available by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { a.healthAvailable { available = it } }
-    SectionCard("Health Connect (optional)") {
+    SectionCard(stringResource(R.string.hc_title)) {
         if (!HealthBridges.compiledIn) {
-            Text("Not included in this build. Build with -PhealthConnect=true to add it. Walk Buddy works fully without it.", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.hc_not_in_build), style = MaterialTheme.typography.bodyMedium)
         } else {
-            ToggleRow("Save walks to Health Connect", if (available) "Writes each finished walk as an exercise session." else "Health Connect is not available on this phone.", s.healthConnectOn && available) { on ->
-                a.save { setHealthConnect(on) }
+            ToggleRow(
+                stringResource(R.string.hc_toggle),
+                if (available) stringResource(R.string.hc_toggle_sub) else stringResource(R.string.hc_unavailable),
+                s.healthConnectOn && available,
+            ) { on -> a.save { setHealthConnect(on) } }
+            if (s.healthConnectOn && available) {
+                ToggleRow(stringResource(R.string.hc_write), stringResource(R.string.hc_write_sub), s.hcWrite) { on -> a.save { setHcWrite(on) } }
             }
             OutlinedButton(onClick = {
                 try {
                     ctx.startActivity(Intent("androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS").putExtra(Intent.EXTRA_PACKAGE_NAME, ctx.packageName))
                 } catch (e: ActivityNotFoundException) {
-                    Toast.makeText(ctx, "Open Health Connect from Android settings", Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, ctx.getString(R.string.hc_open_manually), Toast.LENGTH_LONG).show()
                 }
-            }) { Text("Manage Health Connect access") }
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.hc_manage)) }
         }
+        Disclaimer(stringResource(R.string.hc_note))
     }
 }
 

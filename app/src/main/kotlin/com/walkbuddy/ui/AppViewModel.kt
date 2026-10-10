@@ -439,6 +439,33 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         WalkService.start(appContext)
     }
 
+    /** Couple streak with rest tokens (alpha 2.0), from the days the two of you walked together. */
+    val coupleStreak: StateFlow<com.walkbuddy.domain.CoupleStreakInfo> = combine(coupleDays, settings, clockTick) { cd, st, _ ->
+        com.walkbuddy.domain.CoupleStreak.compute(cd, Clock.today(), st?.restWeekdays.orEmpty(), java.time.LocalTime.now().hour)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, com.walkbuddy.domain.CoupleStreak.compute(emptySet(), Clock.today()))
+
+    // ---- Health Connect (opt-in): compare, never add ----
+    private val _hcNote = MutableStateFlow<com.walkbuddy.domain.ReconciledSteps?>(null)
+    val hcNote: StateFlow<com.walkbuddy.domain.ReconciledSteps?> = _hcNote.asStateFlow()
+
+    /** Called when Today opens. A low-battery-friendly single read; nothing runs in the background for this. */
+    fun refreshHealth() {
+        viewModelScope.launch {
+            val s = c.settings.current()
+            val own = home.value?.verifiedSteps ?: 0
+            _hcNote.value = if (isDemo) null else com.walkbuddy.health.HealthSync.compare(c.health, s, own)
+        }
+    }
+
+    // ---- weather suggestion (opt-in) ----
+    private val _weather = MutableStateFlow<com.walkbuddy.domain.WalkWindow?>(null)
+    val weather: StateFlow<com.walkbuddy.domain.WalkWindow?> = _weather.asStateFlow()
+
+    /** Called when Home opens. Does nothing unless the person switched the suggestion on. */
+    fun refreshWeather() {
+        viewModelScope.launch { _weather.value = if (isDemo) null else com.walkbuddy.weather.WeatherService.suggestion(c) }
+    }
+
     // ---- resume a walk Android ended (alpha 2.0) ----
 
     /** The interrupted walk to offer, or null. Only offered while nothing else is running, and never a stale or tiny one. */

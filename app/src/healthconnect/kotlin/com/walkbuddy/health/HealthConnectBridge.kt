@@ -6,6 +6,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Length
@@ -58,6 +59,7 @@ class HealthConnectBridge(private val context: Context) : HealthBridge {
                     ExerciseSessionRecord(
                         startTime = start, startZoneOffset = zone, endTime = end, endZoneOffset = zone,
                         exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walk Buddy walk",
+                        metadata = Metadata(clientRecordId = com.walkbuddy.domain.WalkExport.clientId(startMs)),
                     ),
                     DistanceRecord(
                         startTime = start, startZoneOffset = zone, endTime = end, endZoneOffset = zone,

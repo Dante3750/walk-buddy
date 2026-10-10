@@ -27,6 +27,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -188,11 +190,22 @@ private fun MainScaffold(vm: AppViewModel) {
             snackbar.showSnackbar(ctxMain.getString(com.walkbuddy.R.string.ch_complete_toast, title))
         }
     }
+    var showHealthRationale by remember { mutableStateOf(false) }
     LaunchedEffect(pendingAction) {
+        if (pendingAction == "health_rationale") { vm.pendingAction.value = null; showHealthRationale = true }
         if (pendingAction == "recap") {
             vm.pendingAction.value = null
             nav.navigate(RecapRoute)
         }
+    }
+
+    if (showHealthRationale) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showHealthRationale = false },
+            title = { Text(stringResource(R.string.hc_rationale_title)) },
+            text = { Text(stringResource(R.string.hc_rationale_body)) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { showHealthRationale = false }) { Text(stringResource(R.string.hc_rationale_ok)) } },
+        )
     }
 
     val showNav = tabs.any { t -> dest?.hierarchy?.any { it.hasRoute(t.route::class) } == true }

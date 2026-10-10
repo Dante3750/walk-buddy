@@ -632,7 +632,7 @@ class WalkSession(
             clearResume()
             teardownNetwork() // sharing ends when the walk ends
             val walkId = repo.saveWalk(summary, walkStartMs)
-            if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
+            com.walkbuddy.health.HealthSync.writeWalkIfNew(health, settingsStore, settings, walkStartMs, now, summary.verifiedSteps, summary.distanceM)
             val card = Highlights.build(summary, showCalories = settings.caloriesEnabled)
             route?.let { r -> if (settings.saveRoutes) routes.save(walkStartMs, r.points) }
             saveSharedWalk(summary, now)

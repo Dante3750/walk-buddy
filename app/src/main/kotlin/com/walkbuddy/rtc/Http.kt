@@ -37,3 +37,13 @@ suspend fun Http.probeHealth(): HealthProbe = kotlinx.coroutines.withContext(kot
         HealthProbe(null, null, e.javaClass.simpleName)
     }
 }
+
+/** A short, plain GET for the opt-in weather suggestion. No cookies, no headers beyond OkHttp's own, 15 s limit. Returns null on any problem. */
+suspend fun Http.getText(url: String): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val client = webSocket.newBuilder().pingInterval(0, TimeUnit.SECONDS).callTimeout(15, TimeUnit.SECONDS).build()
+        client.newCall(okhttp3.Request.Builder().url(url).get().build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+    } catch (e: Exception) {
+        null
+    }
+}
