@@ -300,7 +300,7 @@ private fun RouteSection(r: SharedWalkRecord) {
 }
 
 /** Writes [text] to the app's share cache and offers it to the system share sheet. Nothing is uploaded by Walk Buddy. */
-private fun shareFile(ctx: Context, name: String, text: String, mime: String, chooserTitle: String) {
+internal fun shareFile(ctx: Context, name: String, text: String, mime: String, chooserTitle: String) {
     try {
         val dir = File(ctx.cacheDir, "shared").also { it.mkdirs() }
         val f = File(dir, name)

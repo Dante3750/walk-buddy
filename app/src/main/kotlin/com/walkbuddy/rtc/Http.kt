@@ -23,3 +23,17 @@ object Http {
             .build()
     }
 }
+
+/** Result of the self-check "can I reach the server" probe: a plain GET of /health through the app's existing client. */
+data class HealthProbe(val code: Int?, val ms: Long?, val error: String?)
+
+suspend fun Http.probeHealth(): HealthProbe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val t0 = System.currentTimeMillis()
+    try {
+        val client = webSocket.newBuilder().pingInterval(0, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).connectTimeout(20, TimeUnit.SECONDS).build()
+        val req = okhttp3.Request.Builder().url(ServerConfig.HEALTH_URL).get().build()
+        client.newCall(req).execute().use { HealthProbe(it.code, System.currentTimeMillis() - t0, null) }
+    } catch (e: Exception) {
+        HealthProbe(null, null, e.javaClass.simpleName)
+    }
+}

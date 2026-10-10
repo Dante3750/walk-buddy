@@ -1,0 +1,70 @@
+<resources>
+    <string name="no_share_app">No app to share with</string>
+    <string name="no_browser">Nothing on this phone can open that</string>
+
+    <!-- Self-check -->
+    <string name="selfcheck_title">Self-check</string>
+    <string name="selfcheck_sub">Is everything Walk Buddy needs working on this phone?</string>
+    <string name="selfcheck_all_good">All good. Nothing needs your attention.</string>
+    <string name="selfcheck_some_tips">Works, with a few tips below.</string>
+    <string name="selfcheck_needs_fix">Something needs fixing, see below.</string>
+    <string name="selfcheck_running">Checking...</string>
+    <string name="selfcheck_rerun">Check again</string>
+    <string name="status_pass">OK</string>
+    <string name="status_warn">Tip</string>
+    <string name="status_fail">Fix</string>
+    <string name="status_running">Checking</string>
+    <string name="chk_activity">Physical activity permission</string>
+    <string name="chk_activity_ok">Allowed. Steps can be counted.</string>
+    <string name="chk_activity_bad">Not allowed, so steps cannot be counted.</string>
+    <string name="chk_sensor">Step sensor</string>
+    <string name="chk_sensor_ok">Built-in step counter found. It keeps counting while the app is closed.</string>
+    <string name="chk_sensor_warn">Only a simpler sensor was found. Steps are counted only while Walk Buddy is running and may be approximate.</string>
+    <string name="chk_sensor_bad">No step sensor was found on this phone.</string>
+    <string name="chk_location">Location permission</string>
+    <string name="chk_location_ok">Allowed, precise location.</string>
+    <string name="chk_location_warn">Only approximate location is allowed. Walks work, but the map is rougher.</string>
+    <string name="chk_location_bad">Not allowed. Walks with a buddy need location to show distance.</string>
+    <string name="chk_provider">Location switch</string>
+    <string name="chk_provider_ok">Location is switched on.</string>
+    <string name="chk_provider_bad">Location is switched off in the phone settings.</string>
+    <string name="chk_notifications">Notifications</string>
+    <string name="chk_notifications_ok">Notifications are allowed.</string>
+    <string name="chk_notifications_bad">Notifications are off. Walk and reminder notices will not appear.</string>
+    <string name="chk_battery">Battery optimisation</string>
+    <string name="chk_battery_ok">Unrestricted. Step counting is least likely to be stopped.</string>
+    <string name="chk_battery_bad">Optimised. Some phones stop background step counting; allow unrestricted if steps go missing.</string>
+    <string name="chk_server">Walk server</string>
+    <string name="chk_server_running">Checking the server...</string>
+    <string name="chk_server_ok">The server answered. Walking with a buddy or a group should connect.</string>
+    <string name="chk_server_bad">The server did not answer. It may be waking up (up to a minute) or you may be offline. Solo walking and steps never need it.</string>
+    <string name="chk_storage">Storage</string>
+    <string name="chk_storage_ok">Enough free space.</string>
+    <string name="chk_storage_bad">Low on space or not writable. Walk history and photos may fail to save.</string>
+    <string name="fix_allow">Allow</string>
+    <string name="fix_app_settings">Open app settings</string>
+    <string name="fix_location_settings">Open location settings</string>
+    <string name="fix_battery_settings">Open battery settings</string>
+    <string name="fix_retry">Try again</string>
+
+    <!-- Diagnostics -->
+    <string name="diag_export">Export diagnostics</string>
+    <string name="diag_failed">Could not prepare the file</string>
+    <string name="diag_note">Diagnostics is a short text log kept on this phone. Codes, links, places and names are removed. It is only shared if you tap Export and pick an app.</string>
+
+    <!-- About -->
+    <string name="about_title">About Walk Buddy</string>
+    <string name="about_version">Version %1$s (build %2$d)</string>
+    <string name="about_updates">Updates</string>
+    <string name="about_updates_body">Walk Buddy does not check for updates by itself. This button opens the releases page in your browser.</string>
+    <string name="about_check_updates">Check for updates</string>
+    <string name="about_updates_note">The app makes no network request when you tap this; your browser does.</string>
+    <string name="about_privacy">Privacy</string>
+    <string name="about_privacy_body">No accounts, no analytics, no ads, no trackers. Your steps and walks stay on this phone. Location is shared only with the buddy or group you walk with, only during a walk.</string>
+    <string name="about_read_privacy">Read the privacy notes</string>
+    <string name="about_licences">Open-source licences</string>
+    <string name="about_art">All walkers, scenery and icons are original artwork made for this app.</string>
+    <string name="about_help">Help</string>
+    <string name="about_source">Source code and releases</string>
+    <string name="help_body">Check that permissions, sensors and the server work, or export a short diagnostics file to share when asking for help.</string>
+</resources>

@@ -39,6 +39,8 @@ class WalkBuddyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        com.walkbuddy.diag.AppLog.init(this)
+        com.walkbuddy.diag.AppLog.i("app", "start")
         Notifications.ensureChannels(this)
         // Always-on step counting starts with the process: safety nets first, then the service if Android allows it from here.
         StepTracking.ensureRunning(this)

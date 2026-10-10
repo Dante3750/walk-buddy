@@ -1,0 +1,70 @@
+<resources>
+    <string name="no_share_app">साझा करने के लिए कोई ऐप नहीं मिला</string>
+    <string name="no_browser">इस फ़ोन पर इसे खोलने वाला कोई ऐप नहीं है</string>
+
+    <!-- Self-check -->
+    <string name="selfcheck_title">स्वयं जाँच</string>
+    <string name="selfcheck_sub">क्या वॉक बडी को जो चाहिए, वह इस फ़ोन पर ठीक से काम कर रहा है?</string>
+    <string name="selfcheck_all_good">सब ठीक है। कुछ करने की ज़रूरत नहीं।</string>
+    <string name="selfcheck_some_tips">काम कर रहा है, नीचे कुछ सुझाव हैं।</string>
+    <string name="selfcheck_needs_fix">कुछ ठीक करना ज़रूरी है, नीचे देखें।</string>
+    <string name="selfcheck_running">जाँच हो रही है...</string>
+    <string name="selfcheck_rerun">दोबारा जाँचें</string>
+    <string name="status_pass">ठीक</string>
+    <string name="status_warn">सुझाव</string>
+    <string name="status_fail">ठीक करें</string>
+    <string name="status_running">जाँच जारी</string>
+    <string name="chk_activity">शारीरिक गतिविधि की अनुमति</string>
+    <string name="chk_activity_ok">अनुमति मिली है। कदम गिने जा सकते हैं।</string>
+    <string name="chk_activity_bad">अनुमति नहीं है, इसलिए कदम नहीं गिने जा सकते।</string>
+    <string name="chk_sensor">कदम सेंसर</string>
+    <string name="chk_sensor_ok">फ़ोन का अपना स्टेप काउंटर मिला। ऐप बंद होने पर भी यह गिनता रहता है।</string>
+    <string name="chk_sensor_warn">केवल एक सरल सेंसर मिला। कदम सिर्फ़ तब गिने जाते हैं जब वॉक बडी चल रहा हो, और गिनती अनुमानित हो सकती है।</string>
+    <string name="chk_sensor_bad">इस फ़ोन में कोई कदम सेंसर नहीं मिला।</string>
+    <string name="chk_location">लोकेशन की अनुमति</string>
+    <string name="chk_location_ok">अनुमति मिली है, सटीक लोकेशन।</string>
+    <string name="chk_location_warn">केवल अनुमानित लोकेशन की अनुमति है। सैर चलेगी, पर नक्शा कम सटीक होगा।</string>
+    <string name="chk_location_bad">अनुमति नहीं है। साथी के साथ सैर में दूरी दिखाने के लिए लोकेशन चाहिए।</string>
+    <string name="chk_provider">लोकेशन स्विच</string>
+    <string name="chk_provider_ok">लोकेशन चालू है।</string>
+    <string name="chk_provider_bad">फ़ोन की सेटिंग्स में लोकेशन बंद है।</string>
+    <string name="chk_notifications">सूचनाएँ</string>
+    <string name="chk_notifications_ok">सूचनाओं की अनुमति है।</string>
+    <string name="chk_notifications_bad">सूचनाएँ बंद हैं। सैर और रिमाइंडर की सूचनाएँ नहीं दिखेंगी।</string>
+    <string name="chk_battery">बैटरी ऑप्टिमाइज़ेशन</string>
+    <string name="chk_battery_ok">प्रतिबंध नहीं है। कदम गिनना रुकने की संभावना सबसे कम है।</string>
+    <string name="chk_battery_bad">ऑप्टिमाइज़ है। कुछ फ़ोन पृष्ठभूमि में कदम गिनना रोक देते हैं; कदम छूटें तो \"प्रतिबंध रहित\" चुनें।</string>
+    <string name="chk_server">वॉक सर्वर</string>
+    <string name="chk_server_running">सर्वर जाँचा जा रहा है...</string>
+    <string name="chk_server_ok">सर्वर ने जवाब दिया। साथी या समूह के साथ सैर जुड़नी चाहिए।</string>
+    <string name="chk_server_bad">सर्वर ने जवाब नहीं दिया। वह जाग रहा हो सकता है (एक मिनट तक लग सकता है) या आप ऑफ़लाइन हो सकते हैं। अकेले सैर और कदम गिनने के लिए इसकी ज़रूरत नहीं।</string>
+    <string name="chk_storage">स्टोरेज</string>
+    <string name="chk_storage_ok">पर्याप्त खाली जगह है।</string>
+    <string name="chk_storage_bad">जगह कम है या लिखी नहीं जा सकती। सैर का इतिहास और फ़ोटो सहेजने में दिक्कत आ सकती है।</string>
+    <string name="fix_allow">अनुमति दें</string>
+    <string name="fix_app_settings">ऐप सेटिंग्स खोलें</string>
+    <string name="fix_location_settings">लोकेशन सेटिंग्स खोलें</string>
+    <string name="fix_battery_settings">बैटरी सेटिंग्स खोलें</string>
+    <string name="fix_retry">फिर कोशिश करें</string>
+
+    <!-- Diagnostics -->
+    <string name="diag_export">डायग्नोस्टिक्स निर्यात करें</string>
+    <string name="diag_failed">फ़ाइल तैयार नहीं हो सकी</string>
+    <string name="diag_note">डायग्नोस्टिक्स इस फ़ोन पर रखा एक छोटा टेक्स्ट लॉग है। इसमें कोड, लिंक, जगहें और नाम हटा दिए जाते हैं। यह तभी साझा होता है जब आप निर्यात दबाकर कोई ऐप चुनें।</string>
+
+    <!-- About -->
+    <string name="about_title">वॉक बडी के बारे में</string>
+    <string name="about_version">संस्करण %1$s (बिल्ड %2$d)</string>
+    <string name="about_updates">अपडेट</string>
+    <string name="about_updates_body">वॉक बडी अपने आप अपडेट नहीं जाँचता। यह बटन रिलीज़ पेज को आपके ब्राउज़र में खोलता है।</string>
+    <string name="about_check_updates">अपडेट जाँचें</string>
+    <string name="about_updates_note">इसे दबाने पर ऐप कोई नेटवर्क अनुरोध नहीं करता; आपका ब्राउज़र करता है।</string>
+    <string name="about_privacy">गोपनीयता</string>
+    <string name="about_privacy_body">कोई खाता नहीं, कोई एनालिटिक्स नहीं, कोई विज्ञापन नहीं, कोई ट्रैकर नहीं। आपके कदम और सैर इसी फ़ोन में रहते हैं। लोकेशन केवल सैर के दौरान, उसी साथी या समूह के साथ साझा होती है जिसके साथ आप चल रहे हैं।</string>
+    <string name="about_read_privacy">गोपनीयता नोट पढ़ें</string>
+    <string name="about_licences">ओपन-सोर्स लाइसेंस</string>
+    <string name="about_art">सभी वॉकर, दृश्य और आइकन इस ऐप के लिए बनाई गई मौलिक कलाकृति हैं।</string>
+    <string name="about_help">मदद</string>
+    <string name="about_source">सोर्स कोड और रिलीज़</string>
+    <string name="help_body">जाँचें कि अनुमतियाँ, सेंसर और सर्वर ठीक से काम कर रहे हैं, या मदद माँगते समय साझा करने के लिए एक छोटी डायग्नोस्टिक्स फ़ाइल निर्यात करें।</string>
+</resources>

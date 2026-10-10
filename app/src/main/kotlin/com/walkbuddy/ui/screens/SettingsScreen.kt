@@ -51,6 +51,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Switch
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
+import com.walkbuddy.R
 import com.walkbuddy.health.HealthBridges
 import com.walkbuddy.domain.StepHealth
 import com.walkbuddy.domain.StepSensorKind
@@ -87,6 +89,9 @@ class SettingsActions(
     val onBatterySettings: () -> Unit = {},
     val onOpenDontKillMyApp: () -> Unit = {},
     val onOpenHistory: () -> Unit = {},
+    val onOpenSelfCheck: () -> Unit = {},
+    val onOpenAbout: () -> Unit = {},
+    val onExportDiagnostics: () -> Unit = {},
 )
 
 /** Everything the "Step counting health" row shows, already turned into words. */
@@ -101,7 +106,7 @@ class StepHealthUi(
 )
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onOpenHistory: () -> Unit = {}) {
+fun SettingsScreen(vm: AppViewModel, onOpenHistory: () -> Unit = {}, onOpenSelfCheck: () -> Unit = {}, onOpenAbout: () -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -156,6 +161,9 @@ fun SettingsScreen(vm: AppViewModel, onOpenHistory: () -> Unit = {}) {
     }
     val actions = SettingsActions(
         onOpenHistory = onOpenHistory,
+        onOpenSelfCheck = onOpenSelfCheck,
+        onOpenAbout = onOpenAbout,
+        onExportDiagnostics = { exportDiagnostics(ctx) },
         onOpenAppSettings = { StepTracking.openAppSettings(ctx) },
         onBatterySettings = { StepTracking.openBatterySettings(ctx) },
         onOpenDontKillMyApp = { openOrToast(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://dontkillmyapp.com/"))) },
@@ -208,7 +216,8 @@ fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? 
         HealthSection(a, s)
         DemoSection(a, s)
         DataSection(a)
-        SectionCard("About") {
+        HelpSection(a)
+        SectionCard(stringResource(R.string.about_title)) {
             Text(Copy.WELLNESS)
             Text(Copy.SHARE_LOCATION)
             Text(Copy.LOCAL_ONLY)
@@ -531,6 +540,18 @@ private fun MapSection(a: SettingsActions, s: Settings) {
             TextButton(onClick = { routes.forEach { a.onDeleteRoute(it.fileName) }; routes = a.routes() }, Modifier.heightIn(min = 48.dp)) { Text("Delete all saved routes") }
         } else {
             Disclaimer("No saved routes.")
+        }
+    }
+}
+
+@Composable
+private fun HelpSection(a: SettingsActions) {
+    SectionCard(stringResource(R.string.about_help)) {
+        Text(stringResource(R.string.help_body))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = a.onOpenSelfCheck, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.selfcheck_title)) }
+            OutlinedButton(onClick = a.onExportDiagnostics, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.diag_export)) }
+            OutlinedButton(onClick = a.onOpenAbout, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.about_title)) }
         }
     }
 }

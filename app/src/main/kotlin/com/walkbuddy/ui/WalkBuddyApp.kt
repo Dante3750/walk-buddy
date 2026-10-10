@@ -79,6 +79,8 @@ import kotlinx.serialization.Serializable
 @Serializable data object ScanRoute
 @Serializable data object HistoryRoute
 @Serializable data class HistoryDetailRoute(val id: Long)
+@Serializable data object SelfCheckRoute
+@Serializable data object AboutRoute
 
 private class Tab(val route: Any, val label: Int, val glyph: TabGlyph)
 
@@ -202,7 +204,17 @@ private fun MainScaffold(vm: AppViewModel) {
             }
             composable<FuelRoute> { FuelScreen(vm) }
             composable<UsRoute> { CoupleScreen(vm) }
-            composable<SettingsRoute> { SettingsScreen(vm, onOpenHistory = { nav.navigate(HistoryRoute) { launchSingleTop = true } }) }
+            composable<SettingsRoute> {
+                SettingsScreen(
+                    vm, onOpenHistory = { nav.navigate(HistoryRoute) { launchSingleTop = true } },
+                    onOpenSelfCheck = { nav.navigate(SelfCheckRoute) { launchSingleTop = true } },
+                    onOpenAbout = { nav.navigate(AboutRoute) { launchSingleTop = true } },
+                )
+            }
+            composable<SelfCheckRoute> { com.walkbuddy.ui.screens.SelfCheckScreen(vm, onBack = { nav.popBackStack() }) }
+            composable<AboutRoute> {
+                com.walkbuddy.ui.screens.AboutScreen(onBack = { nav.popBackStack() }, onSelfCheck = { nav.navigate(SelfCheckRoute) { launchSingleTop = true } })
+            }
             composable<HistoryRoute> {
                 HistoryScreen(vm, onBack = { nav.popBackStack() }, onOpen = { id -> nav.navigate(HistoryDetailRoute(id)) { launchSingleTop = true } })
             }
