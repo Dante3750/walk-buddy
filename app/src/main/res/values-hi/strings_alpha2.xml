@@ -102,4 +102,68 @@
     <string name="day_fri">शुक्र</string>
     <string name="day_sat">शनि</string>
     <string name="day_sun">रवि</string>
+
+    <string name="ch_screen_title">चुनौतियाँ</string>
+    <string name="ch_screen_sub">साथ मिलकर पूरे करने के लक्ष्य। सिर्फ़ प्रगति, कोई रैंकिंग नहीं।</string>
+    <string name="ch_none">अभी कोई चुनौती नहीं है। नीचे से कोई चुनें।</string>
+    <string name="ch_week">सप्ताह</string>
+    <string name="ch_month">महीने</string>
+    <string name="ch_title_distance">इस %2$s साथ में %1$s चलें</string>
+    <string name="ch_title_steps">इस %2$s साथ में %1$s कदम चलें</string>
+    <plurals name="ch_title_walks">
+        <item quantity="one">इस %2$s साथ में %1$d सैर करें</item>
+        <item quantity="other">इस %2$s साथ में %1$d सैर करें</item>
+    </plurals>
+    <string name="ch_progress">%2$s में से %1$s</string>
+    <string name="ch_done">पूरा हुआ। साथ में बढ़िया चले।</string>
+    <string name="ch_missed">यह चुनौती खत्म हो गई। जब चाहें दूसरी चुनें।</string>
+    <plurals name="ch_days_left">
+        <item quantity="one">%1$d दिन बाकी</item>
+        <item quantity="other">%1$d दिन बाकी</item>
+    </plurals>
+    <string name="ch_remove">हटाएँ</string>
+    <string name="ch_start_title">चुनौती शुरू करें</string>
+    <string name="ch_start">शुरू करें</string>
+    <string name="ch_started">शुरू हो चुकी</string>
+    <string name="ch_note">केवल साथी या समूह के साथ की सैर गिनी जाती है, और प्रगति इसी फ़ोन पर आपके सैर के इतिहास से निकाली जाती है। एक समय में अधिकतम तीन।</string>
+    <string name="ch_complete_toast">चुनौती पूरी हुई: %1$s</string>
+    <string name="ch_open">चुनौतियाँ खोलें</string>
+    <string name="ch_card_title">चुनौतियाँ</string>
+    <string name="ch_card_body">साथ मिलकर पूरा करने का लक्ष्य चुनें, जैसे इस सप्ताह 10 किमी।</string>
+    <string name="cs_title">साथ की लगातार सैर</string>
+    <plurals name="cs_days">
+        <item quantity="one">%1$d दिन</item>
+        <item quantity="other">%1$d दिन</item>
+    </plurals>
+    <string name="cs_none">अभी साथ की कोई सैर नहीं हुई। जब दोनों तैयार हों, एक छोटी सैर से शुरुआत करें।</string>
+    <string name="cs_walked">आज आप साथ चले। बहुत अच्छा।</string>
+    <string name="cs_rest">आराम का दिन। आपकी लड़ी सुरक्षित है।</string>
+    <string name="cs_token">कल को एक आराम टोकन ने संभाल लिया, इसलिए आपकी लड़ी सुरक्षित है।</string>
+    <string name="cs_again">लड़ी फिर से शुरू हुई, और इसमें कोई हर्ज नहीं। आज नई शुरुआत है।</string>
+    <string name="cs_keep">आपकी लड़ी चल रही है। आज की एक छोटी सैर इसे बनाए रखेगी।</string>
+    <string name="cs_evening">मन हो तो आज शाम साथ में एक छोटी सैर का समय अभी है।</string>
+    <string name="cs_tokens">आराम टोकन: %1$d। सबसे लंबी लड़ी: %2$s।</string>
+
+    <string name="notes_title">नोट और फ़ोटो</string>
+    <string name="notes_hint">इस सैर के बारे में एक निजी नोट</string>
+    <string name="notes_save">नोट सहेजें</string>
+    <string name="notes_saved">नोट सहेज लिया गया</string>
+    <string name="photo_add">फ़ोटो जोड़ें</string>
+    <string name="photo_change">फ़ोटो बदलें</string>
+    <string name="photo_remove">फ़ोटो हटाएँ</string>
+    <string name="photo_failed">वह फ़ोटो इस्तेमाल नहीं हो सकी</string>
+    <string name="photo_desc">इस सैर में जोड़ी गई आपकी फ़ोटो</string>
+    <string name="photo_note">नोट और फ़ोटो इस फ़ोन पर वॉक बडी के अपने स्टोरेज में रहते हैं। फ़ोटो की एक छोटी की गई प्रति बनती है और सैर हटाने पर वह भी हट जाती है।</string>
+    <string name="card_section">सारांश कार्ड</string>
+    <string name="card_title_partner">साथ की सैर</string>
+    <string name="card_title_group">समूह की सैर</string>
+    <string name="card_distance">दूरी</string>
+    <string name="card_time">समय</string>
+    <string name="card_steps">कदम</string>
+    <string name="card_together">साथ-साथ</string>
+    <string name="card_desc">सारांश कार्ड का पूर्वावलोकन</string>
+    <string name="card_route">मेरे रास्ते की रूपरेखा शामिल करें</string>
+    <string name="card_route_sub">डिफ़ॉल्ट रूप से बंद। चालू करने पर कार्ड में आपके अपने रास्ते का आकार दिखता है, फिर भी बिना नक्शे या जगहों के नाम के।</string>
+    <string name="card_share">कार्ड साझा करें</string>
+    <string name="card_note">कार्ड में आपके आँकड़े और साथ चलने का तरीका होता है। उसमें कभी नक्शा, जगहों के नाम या साथी की स्थिति नहीं होती।</string>
 </resources>

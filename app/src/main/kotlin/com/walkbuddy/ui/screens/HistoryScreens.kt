@@ -237,6 +237,8 @@ fun HistoryDetailScreen(vm: AppViewModel, id: Long, onBack: () -> Unit) {
             StatLine("Furthest apart", Units.distance(r.maxGapM, unit))
         }
         RouteSection(r)
+        WalkNotesSection(vm, r.id)
+        SummaryCardSection(vm, r, unit, settings?.cardRoute == true)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = { shareFile(ctx, SharedWalkExport.fileName(r, ext = "json"), SharedWalkExport.json(listOf(r)), "application/json", "Share walk (JSON)") },

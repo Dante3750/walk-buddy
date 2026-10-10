@@ -135,7 +135,9 @@ jobs:
 
       - name: Summarize failures
         if: always()
-        run: scripts/ci-summarize.sh shots.log
+        run: |
+          scripts/ci-summarize.sh shots.log
+          scripts/ci-test-failures.sh app/build/test-results
 
       - name: Collect PNGs
         if: always()

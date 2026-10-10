@@ -102,4 +102,68 @@
     <string name="day_fri">Fri</string>
     <string name="day_sat">Sat</string>
     <string name="day_sun">Sun</string>
+
+    <string name="ch_screen_title">Challenges</string>
+    <string name="ch_screen_sub">Goals to reach together. Just progress, no ranking.</string>
+    <string name="ch_none">No challenge yet. Pick one below.</string>
+    <string name="ch_week">week</string>
+    <string name="ch_month">month</string>
+    <string name="ch_title_distance">Walk %1$s together this %2$s</string>
+    <string name="ch_title_steps">%1$s steps together this %2$s</string>
+    <plurals name="ch_title_walks">
+        <item quantity="one">Take %1$d walk together this %2$s</item>
+        <item quantity="other">Take %1$d walks together this %2$s</item>
+    </plurals>
+    <string name="ch_progress">%1$s of %2$s</string>
+    <string name="ch_done">Done. Well walked, together.</string>
+    <string name="ch_missed">This one has ended. Pick another when you like.</string>
+    <plurals name="ch_days_left">
+        <item quantity="one">%1$d day left</item>
+        <item quantity="other">%1$d days left</item>
+    </plurals>
+    <string name="ch_remove">Remove</string>
+    <string name="ch_start_title">Start a challenge</string>
+    <string name="ch_start">Start</string>
+    <string name="ch_started">Started</string>
+    <string name="ch_note">Only walks with a buddy or a group count, and progress is worked out on this phone from your walk history. At most three at a time.</string>
+    <string name="ch_complete_toast">Challenge complete: %1$s</string>
+    <string name="ch_open">Open challenges</string>
+    <string name="ch_card_title">Challenges</string>
+    <string name="ch_card_body">Pick a goal to reach together, like 10 km this week.</string>
+    <string name="cs_title">Together streak</string>
+    <plurals name="cs_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="cs_none">No shared walks yet. Whenever you are both ready, a short walk starts it.</string>
+    <string name="cs_walked">You walked together today. Lovely.</string>
+    <string name="cs_rest">A rest day. Your streak is safe.</string>
+    <string name="cs_token">A rest token covered yesterday, so your streak is safe.</string>
+    <string name="cs_again">The streak started over, and that is completely fine. Today is a fresh start.</string>
+    <string name="cs_keep">Your streak is going. A short walk today keeps it warm.</string>
+    <string name="cs_evening">Still time for a short walk together tonight, if you feel like it.</string>
+    <string name="cs_tokens">Rest tokens: %1$d. Longest streak: %2$s.</string>
+
+    <string name="notes_title">Notes and photo</string>
+    <string name="notes_hint">A private note about this walk</string>
+    <string name="notes_save">Save note</string>
+    <string name="notes_saved">Note saved</string>
+    <string name="photo_add">Add a photo</string>
+    <string name="photo_change">Change photo</string>
+    <string name="photo_remove">Remove photo</string>
+    <string name="photo_failed">Could not use that photo</string>
+    <string name="photo_desc">Photo you added to this walk</string>
+    <string name="photo_note">The note and photo stay in Walk Buddy\'s own storage on this phone. A copy of the photo is made, shrunk to a small size, and deleted with the walk.</string>
+    <string name="card_section">Summary card</string>
+    <string name="card_title_partner">Walk together</string>
+    <string name="card_title_group">Group walk</string>
+    <string name="card_distance">distance</string>
+    <string name="card_time">time</string>
+    <string name="card_steps">steps</string>
+    <string name="card_together">side by side</string>
+    <string name="card_desc">Preview of the summary card</string>
+    <string name="card_route">Include my route outline</string>
+    <string name="card_route_sub">Off by default. When on, the card shows the shape of your own route, still without a map or place names.</string>
+    <string name="card_share">Share card</string>
+    <string name="card_note">The card has your numbers and how you moved together. It never has a map, place names or your buddy\'s position.</string>
 </resources>

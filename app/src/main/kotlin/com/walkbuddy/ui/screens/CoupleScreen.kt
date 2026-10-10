@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -102,10 +103,11 @@ class CoupleActions(
     val onDeleteSpot: (Long) -> Unit = {},
     /** Saves the current location under a name; [done] gets the result message ("Saved" on success). */
     val onSaveSpot: (name: String, done: (String) -> Unit) -> Unit = { _, _ -> },
+    val onOpenChallenges: () -> Unit = {},
 )
 
 @Composable
-fun CoupleScreen(vm: AppViewModel) {
+fun CoupleScreen(vm: AppViewModel, onOpenChallenges: () -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val dates by vm.dates.collectAsStateWithLifecycle()
@@ -117,7 +119,9 @@ fun CoupleScreen(vm: AppViewModel) {
         anniversaryDate = settings?.anniversaryDate, anniversaryLabel = settings?.anniversaryLabel.orEmpty(),
         unit = settings?.unitSystem ?: UnitSystem.Metric, dates = dates, spots = spots, distanceM = distance, coupleDays = days,
         canShareSpots = session.phase != Phase.Idle && !session.solo, today = Clock.today(), nowMs = System.currentTimeMillis(),
+        restWeekdays = settings?.restWeekdays.orEmpty(),
         a = CoupleActions(
+            onOpenChallenges = onOpenChallenges,
             onPickAnniversary = { label -> pickDate(ctx) { d -> vm.saveSettings { setAnniversary(d.toString(), label) } } },
             onRemoveAnniversary = { vm.saveSettings { setAnniversary("", "") } },
             onPlanDate = { title, weekly ->
@@ -149,6 +153,7 @@ fun CoupleContent(
     today: Long,
     nowMs: Long,
     a: CoupleActions,
+    restWeekdays: Set<Int> = emptySet(),
 ) {
     var annivLabel by remember(anniversaryLabel) { mutableStateOf(anniversaryLabel) }
     var title by remember { mutableStateOf("Walk date") }
@@ -162,6 +167,13 @@ fun CoupleContent(
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ScreenTitle("Us", subtitle = "For two people walking together. No accounts: you simply share a session code.")
 
+        if (coupleDays.isNotEmpty()) {
+            CoupleStreakCard(com.walkbuddy.domain.CoupleStreak.compute(coupleDays, today, restWeekdays, java.time.LocalTime.now().hour))
+        }
+        SectionCard(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.ch_card_title)) {
+            Text(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.ch_card_body), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = a.onOpenChallenges, modifier = Modifier.heightIn(min = 48.dp)) { Text(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.ch_open)) }
+        }
         SectionCard("Together streak") {
             Text(streak.text, style = MaterialTheme.typography.titleMedium)
             WbProgress(streak.daysTogether / streak.windowDays.toFloat(), Modifier.semantics { contentDescription = streak.text })

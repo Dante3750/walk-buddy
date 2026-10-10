@@ -81,6 +81,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class HistoryDetailRoute(val id: Long)
 @Serializable data object SelfCheckRoute
 @Serializable data object AboutRoute
+@Serializable data object ChallengesRoute
 
 private class Tab(val route: Any, val label: Int, val glyph: TabGlyph)
 
@@ -148,6 +149,7 @@ private fun MainScaffold(vm: AppViewModel) {
     val dest = entry?.destination
     val width = rememberWidthClass()
     val snackbar = remember { SnackbarHostState() }
+    val ctxMain = LocalContext.current
     val pendingAction by vm.pendingAction.collectAsStateWithLifecycle()
 
     // Badge unlocks: a snackbar is announced by TalkBack by itself, so milestones are never visual-only.
@@ -155,6 +157,14 @@ private fun MainScaffold(vm: AppViewModel) {
         vm.badgeEvents.collect { ids ->
             val first = ids.first().title
             snackbar.showSnackbar(if (ids.size == 1) "New badge: $first" else "New badge: $first, and ${ids.size - 1} more")
+        }
+    }
+    LaunchedEffect(Unit) {
+        vm.challengeDone.collect { id ->
+            val t = com.walkbuddy.domain.Challenges.template(id)
+            val settingsNow = vm.settings.value
+            val title = if (t != null) com.walkbuddy.ui.screens.challengeTitleText(ctxMain, t, settingsNow?.unitSystem ?: com.walkbuddy.domain.UnitSystem.Metric) else ""
+            snackbar.showSnackbar(ctxMain.getString(com.walkbuddy.R.string.ch_complete_toast, title))
         }
     }
     LaunchedEffect(pendingAction) {
@@ -208,7 +218,8 @@ private fun MainScaffold(vm: AppViewModel) {
                 TrendsScreen(vm, onBadges = { nav.navigate(BadgesRoute) }, onRecap = { nav.navigate(RecapRoute) })
             }
             composable<FuelRoute> { FuelScreen(vm) }
-            composable<UsRoute> { CoupleScreen(vm) }
+            composable<UsRoute> { CoupleScreen(vm, onOpenChallenges = { nav.navigate(ChallengesRoute) { launchSingleTop = true } }) }
+            composable<ChallengesRoute> { com.walkbuddy.ui.screens.ChallengesScreen(vm, onBack = { nav.popBackStack() }) }
             composable<SettingsRoute> {
                 SettingsScreen(
                     vm, onOpenHistory = { nav.navigate(HistoryRoute) { launchSingleTop = true } },

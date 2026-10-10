@@ -38,9 +38,11 @@ class PartnerTransport(
     private val onMessage: (from: String, msg: PeerMessage) -> Unit,
     /** Who is reachable, or the link mode, may have changed. */
     private val onChange: () -> Unit,
+    /** A key saved before the app was killed, so the server gives this phone its old place back (alpha 2.0 "resume your walk"). */
+    resumeKey: String? = null,
 ) {
     /** Lets the same phone take its place in the room back at once after a network change (see server/README.md). */
-    val sessionKey: String = ByteArray(18).also { SecureRandom().nextBytes(it) }.let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
+    val sessionKey: String = resumeKey ?: ByteArray(18).also { SecureRandom().nextBytes(it) }.let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
 
     private val link = PeerLink(
         context = context, selfId = selfId,

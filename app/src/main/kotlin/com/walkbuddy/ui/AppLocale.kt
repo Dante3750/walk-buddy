@@ -21,8 +21,10 @@ object AppLocale {
 
     fun current(ctx: Context): String {
         if (Build.VERSION.SDK_INT >= 33) {
-            val l = ctx.getSystemService(LocaleManager::class.java)?.applicationLocales
-            val tag = if (l == null || l.isEmpty) "" else l.get(0).language
+            val tag = runCatching {
+                val l = ctx.getSystemService(LocaleManager::class.java)?.applicationLocales
+                if (l == null || l.isEmpty) "" else l.get(0).language
+            }.getOrDefault("")
             return AppLanguages.normalize(tag)
         }
         return AppLanguages.normalize(stored(ctx))

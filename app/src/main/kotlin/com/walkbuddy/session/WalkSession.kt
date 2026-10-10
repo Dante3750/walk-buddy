@@ -46,6 +46,13 @@ import com.walkbuddy.power.PowerMonitor
 import com.walkbuddy.rtc.NetworkWatcher
 import com.walkbuddy.domain.NudgeConfig
 import com.walkbuddy.domain.PeerMessage
+import com.walkbuddy.domain.ResumeCodec
+import com.walkbuddy.domain.ResumeKind
+import com.walkbuddy.domain.ResumePolicy
+import com.walkbuddy.domain.ResumeState
+import com.walkbuddy.diag.AppLog
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.walkbuddy.domain.PingLimiter
 import com.walkbuddy.domain.SessionCode
 import com.walkbuddy.domain.SignalingMessage
@@ -164,6 +171,10 @@ class WalkSession(
     private var lastBuddySaveMs = 0L
     private val trailBook = TrailBook()
     private var route: RouteRecorder? = null
+    /** The walk that was running when Android killed the app, while it is being resumed (alpha 2.0). */
+    private var carry: ResumeState? = null
+    private var lastResumeSaveMs = 0L
+    private var lastResumeDistM = 0.0
 
     // ---------- lobby ----------
 
@@ -207,6 +218,7 @@ class WalkSession(
             signal = { m -> signaling?.send(m) ?: false },
             onMessage = { from, msg -> onPeerMessage(from, msg) },
             onChange = { onTransportChange() },
+            resumeKey = carry?.takeIf { it.kind == ResumeKind.Partner }?.key,
         ).also { it.online = net.online.value }
         signaling = SignalingClient(
             handleMessage = { m -> scope.launch { onSignal(m) } },
@@ -297,7 +309,10 @@ class WalkSession(
         val now = System.currentTimeMillis()
         val reachable = (names.keys + t.roomPeers).filter { t.reachable(it) && it !in gone }.toSet()
         helloTo.retainAll(reachable)
-        for (id in reachable) if (helloTo.add(id)) sendPeer(PeerMessage.Hello(selfId, settings.displayName.ifBlank { "Buddy" }, AvatarCode.encode(settings.avatar)), now)
+        for (id in reachable) if (helloTo.add(id)) {
+            sendPeer(PeerMessage.Hello(selfId, settings.displayName.ifBlank { "Buddy" }, AvatarCode.encode(settings.avatar)), now)
+            _ui.value.pin?.let { sendPeer(PeerMessage.Pin(it.pos.lat, it.pos.lon, it.label), now) }
+        }
         refreshPeers()
         refreshLink()
     }
@@ -385,7 +400,9 @@ class WalkSession(
             val s = settingsStore.current()
             settings = s
             val now = System.currentTimeMillis()
-            walkStartMs = now
+            // A resumed walk keeps its place in time: the minutes the app was gone are not counted as walking.
+            walkStartMs = carry?.let { now - it.walkedMs } ?: now
+            lastResumeSaveMs = 0L; lastResumeDistM = 0.0
             val startSample = steps.sampleNow() // credits steps before the walk to the day, and gives the walk its starting counter
             val stepLen = s.calibratedStepLengthM
             val cfg = WalkConfig(
@@ -400,6 +417,11 @@ class WalkSession(
 
             trailBook.clear()
             route = if (s.saveRoutes) RouteRecorder() else null
+            carry?.let { c0 ->
+                route?.let { r -> Polyline.decode(c0.route).forEach { pt -> r.add(c0.startMs, pt) } }
+                if (c0.pinLat != null && c0.pinLon != null) _ui.update { it.copy(pin = MeetingPin(LatLon(c0.pinLat!!, c0.pinLon!!), c0.pinLabel.orEmpty())) }
+                AppLog.i("resume", "walk resumed (${c0.kind.name})")
+            }
             sendGate.reset(); motion.reset()
             power.setWalk(true, groupSize = connected.size + 1)
             recorder = if (_ui.value.solo || _ui.value.demo) null else SharedWalkRecorder(now, SharedMode.Partner)
@@ -467,9 +489,44 @@ class WalkSession(
             val (locSt, locSec) = locationStatus(st, now)
             recordShared(st, now)
             _ui.update { it.copy(walk = st, trails = trailBook.snapshot(), locStatus = locSt, locSearchingSec = locSec) }
+            saveResume(st, now)
             refreshLink()
             st.nudge?.let { showBanner(it.text, nudge = true) }
             e.takeSpot()?.let { offer -> _ui.update { it.copy(spotOffer = offer) } }
+        }
+    }
+
+    /** Saves a small snapshot every ~20 s or 60 m so a walk survives the app being killed. It stays in the app's own settings. */
+    private fun saveResume(st: WalkState, now: Long) {
+        if (_ui.value.demo) return
+        if (!ResumePolicy.shouldSave(lastResumeSaveMs, lastResumeDistM, now, st.myDistanceM)) return
+        lastResumeSaveMs = now; lastResumeDistM = st.myDistanceM
+        val c0 = carry
+        val pts = route?.points.orEmpty().map { LatLon(it.lat, it.lon) }
+        val pin = _ui.value.pin
+        val state = ResumeState(
+            kind = if (_ui.value.solo) ResumeKind.Solo else ResumeKind.Partner, startMs = walkStartMs, savedMs = now,
+            code = code, key = transport?.sessionKey,
+            distanceM = st.myDistanceM + (c0?.distanceM ?: 0.0), verifiedSteps = st.myVerifiedSteps + (c0?.verifiedSteps ?: 0L), rawSteps = st.myRawSteps + (c0?.rawSteps ?: 0L),
+            route = ResumePolicy.compactRoute(pts), pinLat = pin?.pos?.lat, pinLon = pin?.pos?.lon, pinLabel = pin?.label,
+        )
+        val json = ResumeCodec.encode(state)
+        scope.launch { settingsStore.setResume(json) }
+    }
+
+    private fun clearResume() {
+        carry = null
+        scope.launch { settingsStore.setResume("") }
+    }
+
+    /** Picks up a walk that Android ended: same code and key, so the partner sees the same person come back. */
+    fun resumeWalk(state: ResumeState) {
+        if (sessionActive) return
+        carry = state
+        openLobby(if (state.kind == ResumeKind.Partner) state.code else null, solo = state.kind == ResumeKind.Solo)
+        scope.launch {
+            withTimeoutOrNull(5_000) { _ui.first { it.myId.isNotEmpty() } }
+            if (_ui.value.phase == Phase.Lobby) startWalking() else carry = null
         }
     }
 
@@ -546,7 +603,8 @@ class WalkSession(
             val now = System.currentTimeMillis()
             sendPeer(PeerMessage.Bye, now)
             walkJobs.forEach { it.cancel() }; walkJobs.clear()
-            val summary = e.finish(now)
+            val summary = e.finish(now).let { s0 -> carry?.let { ResumePolicy.carryInto(s0, it) } ?: s0 }
+            clearResume()
             teardownNetwork() // sharing ends when the walk ends
             val walkId = repo.saveWalk(summary, walkStartMs)
             if (settings.healthConnectOn) health.writeWalk(walkStartMs, now, summary.verifiedSteps, summary.distanceM)
@@ -582,6 +640,7 @@ class WalkSession(
 
     /** Leave the lobby (or abandon a walk) without saving. */
     fun leave() {
+        clearResume()
         walkJobs.forEach { it.cancel() }; walkJobs.clear()
         sendPeer(PeerMessage.Bye)
         teardownNetwork()

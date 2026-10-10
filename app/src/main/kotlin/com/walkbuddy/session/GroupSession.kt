@@ -12,6 +12,10 @@ import com.walkbuddy.domain.AvatarCode
 import com.walkbuddy.domain.LocationStatus
 import com.walkbuddy.domain.LocationStatusLogic
 import com.walkbuddy.domain.Polyline
+import com.walkbuddy.domain.ResumeCodec
+import com.walkbuddy.domain.ResumeKind
+import com.walkbuddy.domain.ResumePolicy
+import com.walkbuddy.domain.ResumeState
 import com.walkbuddy.domain.SharedMode
 import com.walkbuddy.domain.SharedWalkRecorder
 import com.walkbuddy.domain.TrackBuilders
@@ -162,6 +166,10 @@ class GroupSession(
     private var recorder: SharedWalkRecorder? = null
     private var searchingSinceMs = 0L
     private var hadLocationPermission = false
+    /** The group walk that was running when Android ended the app, while it is being resumed (alpha 2.0). */
+    private var carry: ResumeState? = null
+    private var lastResumeSaveMs = 0L
+    private var lastResumeDistM = 0.0
 
     // ---------- create / join ----------
 
@@ -196,7 +204,7 @@ class GroupSession(
     private suspend fun begin(nick: String, prec: LocationPrecision) {
         settings = settingsStore.current()
         selfId = settingsStore.ensurePeerId()
-        key = GroupKey.generate(SecureRandom().asKotlinRandom())
+        key = carry?.takeIf { it.kind == ResumeKind.Group }?.key ?: GroupKey.generate(SecureRandom().asKotlinRandom())
         nickname = nick.trim().ifBlank { settings.displayName.ifBlank { "Walker" } }.take(24)
         precision = prec
         reconnector.cancel(); ending = false; goalCelebrated = false; sweeperSelf = false
@@ -344,7 +352,9 @@ class GroupSession(
     )
 
     private fun startTracking(now: Long, gs: GroupSettings) {
-        walkStartMs = now
+        walkStartMs = carry?.let { now - it.walkedMs } ?: now
+        lastResumeSaveMs = 0L; lastResumeDistM = 0.0
+        carry?.let { c0 -> route?.let { r -> Polyline.decode(c0.route).forEach { pt -> r.add(c0.startMs, pt) } } }
         val e = GroupEngine(selfId, nickname, walkConfig(gs.goalSteps), now)
         engine = e
         sendGate.reset(); motion.reset()
@@ -416,12 +426,43 @@ class GroupSession(
             val (locSt, locSec) = locationStatus(st, now)
             recordShared(st, now)
             _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps, locStatus = locSt, locSearchingSec = locSec) }
+            saveResume(st, now)
             st.nudge?.let { showBanner(it.text, nudge = true) }
             if (st.goal.reached && !goalCelebrated && st.goal.goal > 0) {
                 goalCelebrated = true
                 showBanner(com.walkbuddy.domain.CollectiveSteps.message(st.goal), nudge = false)
             }
         }
+    }
+
+    /** Saves a small snapshot every ~20 s or 60 m so a group walk survives the app being killed; the group key lets me back into the room. */
+    private fun saveResume(st: GroupState, now: Long) {
+        if (_ui.value.demo || code == null) return
+        if (!ResumePolicy.shouldSave(lastResumeSaveMs, lastResumeDistM, now, st.myDistanceM)) return
+        lastResumeSaveMs = now; lastResumeDistM = st.myDistanceM
+        val c0 = carry
+        val pts = route?.points.orEmpty().map { LatLon(it.lat, it.lon) }
+        val state = ResumeState(
+            kind = ResumeKind.Group, startMs = walkStartMs, savedMs = now, code = code, key = key, nickname = nickname,
+            host = _ui.value.iAmHost, precision = precision.name,
+            distanceM = st.myDistanceM + (c0?.distanceM ?: 0.0), verifiedSteps = st.myVerifiedSteps + (c0?.verifiedSteps ?: 0L), rawSteps = st.myRawSteps + (c0?.rawSteps ?: 0L),
+            route = ResumePolicy.compactRoute(pts),
+        )
+        val json = ResumeCodec.encode(state)
+        scope.launch { settingsStore.setResume(json) }
+    }
+
+    private fun clearResume() {
+        carry = null
+        scope.launch { settingsStore.setResume("") }
+    }
+
+    /** Rejoins the same group with the same key, so the roster shows the same person coming back. */
+    fun resumeGroup(state: ResumeState) {
+        if (_ui.value.phase != GroupPhase.Idle) return
+        val c = state.code ?: return
+        carry = state
+        join(c, state.nickname.orEmpty(), LocationPrecision.fromName(state.precision))
     }
 
     /** User-driven changes (pause sharing) go out now, but never more than once per short gap. */
@@ -508,6 +549,7 @@ class GroupSession(
     fun cancel() {
         if (_ui.value.demo) { stopDemo(); return }
         ending = true
+        clearResume()
         walkJobs.forEach { it.cancel() }; walkJobs.clear()
         client?.send(GroupClientMessage.Leave)
         teardown()
@@ -517,6 +559,8 @@ class GroupSession(
     private fun finish(reason: String?, leaveRoom: Boolean = true) {
         if (ending) return
         ending = true
+        val carried = carry
+        clearResume()
         val e = engine
         val wasJoined = _ui.value.joined
         // teardown() clears these; the saving below runs after it.
@@ -531,7 +575,7 @@ class GroupSession(
         }
         scope.launch {
             val now = System.currentTimeMillis()
-            val summary = e.finish(now)
+            val summary = e.finish(now).let { s0 -> carried?.let { ResumePolicy.carryInto(s0, it) } ?: s0 }
             val groupSteps = _ui.value.groupSteps
             var walkId: Long? = null
             if (summary.durationMs >= 20_000) {
