@@ -47,11 +47,12 @@ find_png() {
   done
 }
 n=0
+echo "::notice title=publish-screens::snapshots: $(find app/src/test/snapshots app/build/reports/paparazzi -name '*.png' 2>/dev/null | wc -l) png, convert: $(command -v convert || echo none)"
 for line in $MAP; do
   name="${line%%=*}"; method="${line#*=}"
   src=$(find_png "$method")
-  if [ -z "$src" ]; then echo "missing: $method"; continue; fi
+  if [ -z "$src" ]; then echo "::warning title=publish-screens::missing $method"; continue; fi
   convert "$src" -resize 540x -strip -colors 160 PNG8:"$dest/$name.png" && n=$((n+1))
   ls -l "$dest/$name.png" | awk '{print $5, $9}'
 done
-echo "published $n screens"
+echo "::notice title=publish-screens::published $n screens"
