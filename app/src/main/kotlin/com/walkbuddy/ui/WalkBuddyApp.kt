@@ -99,7 +99,11 @@ fun WalkBuddyApp(vm: AppViewModel) {
     val group by vm.group.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val s = settings
+    val scene = remember(s?.trackTheme) {
+        com.walkbuddy.domain.Seasons.scene(com.walkbuddy.domain.TrackTheme.fromId(s?.trackTheme), java.time.LocalDate.now().monthValue)
+    }
 
+    androidx.compose.runtime.CompositionLocalProvider(com.walkbuddy.ui.components.LocalTrackScene provides scene) {
     when {
         s == null -> Scaffold { pad ->
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -133,6 +137,7 @@ fun WalkBuddyApp(vm: AppViewModel) {
             Scaffold { pad -> Box(Modifier.padding(pad)) { WalkFlow(vm, session) } }
         }
         else -> MainScaffold(vm)
+    }
     }
 }
 

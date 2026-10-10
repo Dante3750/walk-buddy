@@ -28,6 +28,7 @@ object Notifications {
     const val ID_STEPS = 1004
     private const val ID_NUDGE = 1002
     private const val ID_REMIND = 1003
+    private const val ID_WALK_REMINDER = 1005
 
     fun ensureChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -82,10 +83,36 @@ object Notifications {
             .setContentIntent(openApp(context))
             .build()
 
-    private fun canPost(context: Context): Boolean =
+    fun canPost(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     fun nudge(context: Context, text: String) = post(context, CH_NUDGE, ID_NUDGE, "A gentle hint", text, timeoutMs = 30_000)
+
+    /** A walk reminder with its three actions (alpha 2.0). Plain Intents to [ReminderActionReceiver]; nothing is exported. */
+    fun walkReminder(context: Context, title: String, text: String) {
+        if (!canPost(context)) return
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        fun action(code: Int, act: String): PendingIntent = PendingIntent.getBroadcast(
+            context, code, Intent(act).setClass(context, ReminderActionReceiver::class.java).setPackage(context.packageName),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val b = NotificationCompat.Builder(context, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_stat_walk)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(openApp(context))
+            .addAction(0, context.getString(R.string.rem_snooze), action(31, ReminderActionReceiver.ACTION_SNOOZE))
+            .addAction(0, context.getString(R.string.rem_cant), action(32, ReminderActionReceiver.ACTION_CANT))
+            .addAction(0, context.getString(R.string.rem_skip), action(33, ReminderActionReceiver.ACTION_SKIP))
+        nm.notify(ID_WALK_REMINDER, b.build())
+    }
+
+    fun cancelWalkReminder(context: Context) {
+        context.getSystemService(NotificationManager::class.java)?.cancel(ID_WALK_REMINDER)
+    }
 
     fun reminder(context: Context, title: String, text: String) = post(context, CH_REMIND, ID_REMIND, title, text, timeoutMs = 0)
 

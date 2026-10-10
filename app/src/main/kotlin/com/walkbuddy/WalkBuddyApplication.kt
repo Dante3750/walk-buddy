@@ -15,6 +15,7 @@ import com.walkbuddy.sensors.StepSource
 import com.walkbuddy.session.GroupSession
 import com.walkbuddy.session.WalkSession
 import com.walkbuddy.steps.StepTracking
+import kotlinx.coroutines.launch
 
 /** Hand-rolled dependency container (same approach as the template project): small enough that DI would only add build risk. */
 class AppContainer(context: Context) {
@@ -44,5 +45,6 @@ class WalkBuddyApplication : Application() {
         Notifications.ensureChannels(this)
         // Always-on step counting starts with the process: safety nets first, then the service if Android allows it from here.
         StepTracking.ensureRunning(this)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch { runCatching { com.walkbuddy.notify.WalkReminderScheduler.reschedule(this@WalkBuddyApplication) } }
     }
 }

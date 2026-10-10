@@ -545,6 +545,14 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         viewModelScope.launch { done(c.repository.startChallenge(templateId)) }
     }
 
+    /** Saves the walk reminders, then queues the next one (one inexact WorkManager job). */
+    fun setReminders(slots: List<com.walkbuddy.domain.ReminderSlot>) {
+        viewModelScope.launch {
+            c.settings.setReminders(com.walkbuddy.domain.WalkReminders.encode(slots))
+            com.walkbuddy.notify.WalkReminderScheduler.reschedule(appContext)
+        }
+    }
+
     fun deleteChallenge(id: Long) { viewModelScope.launch { c.repository.deleteChallenge(id) } }
 
     /** My walker on the Track. Sent to buddies as one small number next to my nickname. */

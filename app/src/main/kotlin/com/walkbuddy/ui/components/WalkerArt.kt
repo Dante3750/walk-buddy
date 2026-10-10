@@ -53,6 +53,8 @@ fun DrawScope.drawWalker(
     val sw = (h * 0.075f).coerceAtLeast(2f)
     val footY = baseY
     val swing = sin(phase)
+    // Where the head and shoulders ended up, so accessories sit right on every style.
+    var headCx = cx; var headCy = footY - h * 0.8f; var headRad = h * 0.13f; var accShoulderY = footY - h * 0.7f
     when (avatar.style) {
         AvatarStyle.Round -> {
             // A round pawn: a soft body, a smaller head, and two little feet that take turns.
@@ -63,6 +65,7 @@ fun DrawScope.drawWalker(
             drawCircle(dark, h * 0.07f, Offset(cx - dir * swing * h * 0.12f, footY - h * 0.05f))
             drawCircle(c, bodyR, Offset(cx, bodyCy))
             drawCircle(skin, headR, Offset(cx + dir * h * 0.02f, bodyCy - bodyR - headR * 0.55f))
+            headCx = cx + dir * h * 0.02f; headCy = bodyCy - bodyR - headR * 0.55f; headRad = headR; accShoulderY = bodyCy - bodyR * 0.55f
         }
         AvatarStyle.Boy -> {
             val headR = h * 0.13f
@@ -87,6 +90,7 @@ fun DrawScope.drawWalker(
             drawCircle(skin, headR, headC)
             // short hair: a cap over the top of the head
             drawArc(dark, 180f, 180f, true, Offset(headC.x - headR * 1.05f, headC.y - headR * 1.05f), androidx.compose.ui.geometry.Size(headR * 2.1f, headR * 1.5f))
+            headCx = headC.x; headCy = headC.y; headRad = headR; accShoulderY = shoulderY0(neckY, h)
         }
         AvatarStyle.Girl -> {
             val headR = h * 0.13f
@@ -124,6 +128,40 @@ fun DrawScope.drawWalker(
                 quadraticBezierTo(tailBase.x - dir * h * 0.14f, tailBase.y + sway, tailBase.x - dir * h * 0.10f, tailBase.y + h * 0.15f)
             }
             drawPath(tail, dark, style = Stroke(width = sw * 1.1f, cap = StrokeCap.Round))
+            headCx = headC.x; headCy = headC.y; headRad = headR; accShoulderY = shoulderY0(neckY, h)
+        }
+    }
+    drawAccessory(avatar.accessory, avatar.colorIndex, Offset(headCx, headCy), headRad, accShoulderY, h, dir, ink, alpha)
+}
+
+private fun shoulderY0(neckY: Float, h: Float): Float = neckY + h * 0.07f
+
+/** Original line-art extras (alpha 2.0): a cap, a little backpack or a scarf, in the walker's own colour family. */
+private fun DrawScope.drawAccessory(
+    acc: com.walkbuddy.domain.AvatarAccessory, colorIndex: Int, head: Offset, headR: Float, shoulderY: Float, h: Float, dir: Float, ink: Color, alpha: Float,
+) {
+    val accent = lerp(WalkerPalette.color(colorIndex), Color.Black, 0.28f).copy(alpha = alpha)
+    val light = lerp(WalkerPalette.color(colorIndex), Color.White, 0.25f).copy(alpha = alpha)
+    when (acc) {
+        com.walkbuddy.domain.AvatarAccessory.None -> Unit
+        com.walkbuddy.domain.AvatarAccessory.Cap -> {
+            drawArc(accent, 180f, 180f, true, Offset(head.x - headR * 1.12f, head.y - headR * 1.15f), androidx.compose.ui.geometry.Size(headR * 2.24f, headR * 1.5f))
+            drawLine(accent, Offset(head.x, head.y - headR * 0.35f), Offset(head.x + dir * headR * 1.75f, head.y - headR * 0.3f), headR * 0.32f, StrokeCap.Round)
+        }
+        com.walkbuddy.domain.AvatarAccessory.Backpack -> {
+            val w = h * 0.13f; val ht = h * 0.24f
+            val x = head.x - dir * (h * 0.15f) - w / 2f
+            drawRoundRect(accent, Offset(x, shoulderY - h * 0.02f), androidx.compose.ui.geometry.Size(w, ht), androidx.compose.ui.geometry.CornerRadius(w * 0.35f))
+            drawLine(light, Offset(x + w * 0.2f, shoulderY + ht * 0.4f), Offset(x + w * 0.8f, shoulderY + ht * 0.4f), h * 0.02f, StrokeCap.Round)
+        }
+        com.walkbuddy.domain.AvatarAccessory.Scarf -> {
+            val y = head.y + headR * 1.05f
+            drawLine(accent, Offset(head.x - headR * 0.95f, y), Offset(head.x + headR * 0.95f, y), h * 0.05f, StrokeCap.Round)
+            val tail = Path().apply {
+                moveTo(head.x - dir * headR * 0.7f, y)
+                quadraticBezierTo(head.x - dir * headR * 1.6f, y + h * 0.04f, head.x - dir * headR * 1.5f, y + h * 0.15f)
+            }
+            drawPath(tail, accent, style = Stroke(width = h * 0.045f, cap = StrokeCap.Round))
         }
     }
 }

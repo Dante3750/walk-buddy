@@ -92,6 +92,9 @@ class SettingsActions(
     val onOpenSelfCheck: () -> Unit = {},
     val onOpenAbout: () -> Unit = {},
     val onExportDiagnostics: () -> Unit = {},
+    val setReminders: (List<com.walkbuddy.domain.ReminderSlot>) -> Unit = {},
+    val askNotifications: () -> Unit = {},
+    val notificationsAllowed: Boolean = true,
 )
 
 /** Everything the "Step counting health" row shows, already turned into words. */
@@ -120,6 +123,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenHistory: () -> Unit = {}, onOpenSelfC
         }
     }
     val perms = rememberPermState()
+    val askNotif = com.walkbuddy.ui.rememberPermissionRequester(perms)
     var tick by remember { mutableLongStateOf(System.currentTimeMillis()) }
     // The row is a live check ("5 min ago" does not need seconds): refresh it every 15 s, only while this screen is resumed (nothing runs with
     // the screen off), and at once when the user comes back from a system settings page.
@@ -164,6 +168,9 @@ fun SettingsScreen(vm: AppViewModel, onOpenHistory: () -> Unit = {}, onOpenSelfC
         onOpenSelfCheck = onOpenSelfCheck,
         onOpenAbout = onOpenAbout,
         onExportDiagnostics = { exportDiagnostics(ctx) },
+        setReminders = { vm.setReminders(it) },
+        askNotifications = { askNotif(com.walkbuddy.ui.PermState.NOTIFICATIONS) },
+        notificationsAllowed = perms.notifications,
         onOpenAppSettings = { StepTracking.openAppSettings(ctx) },
         onBatterySettings = { StepTracking.openBatterySettings(ctx) },
         onOpenDontKillMyApp = { openOrToast(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://dontkillmyapp.com/"))) },
@@ -206,6 +213,9 @@ fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? 
         if (stepHealth != null) StepHealthSection(stepHealth, a)
         BatterySection(a, s, battery ?: PowerState(userBatterySaver = s.batterySaver), stepHealth, stepKind)
         AppearanceSection(a, s)
+        ThemeSection(a, s)
+        RemindersSection(a, s)
+        LanguageSection()
         ProfileSection(a, s)
         GoalSection(a, s)
         StepLengthSection(a, s)

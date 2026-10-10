@@ -108,6 +108,9 @@
         <!-- Only the system sends these two broadcasts, so the receiver does not need to be exported. There are no alarms and no wake locks;
              background step safety is one WorkManager job (see StepSampleWorker). -->
         <receiver
+            android:name=".notify.ReminderActionReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".notify.BootReceiver"
             android:exported="false">
             <intent-filter>

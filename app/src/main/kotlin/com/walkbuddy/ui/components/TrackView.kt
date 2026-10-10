@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
@@ -105,18 +106,20 @@ fun TrackView(
         }
     }
 
-    val ink = MaterialTheme.colorScheme.onSurface
-    val faint = MaterialTheme.colorScheme.outlineVariant
-    val panel = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    val scene = LocalTrackScene.current
+    val style = remember(scene) { sceneStyle(scene) }
+    val ink = style.ink ?: MaterialTheme.colorScheme.onSurface
+    val faint = if (style.ink != null) style.ink.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant
+    val panel = style.panel ?: MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
     val warm = WbTheme.colors.glow
-    val rail = MaterialTheme.colorScheme.onSurfaceVariant
-    val bg = MaterialTheme.colorScheme.surfaceContainerLow
+    val rail = style.rail ?: MaterialTheme.colorScheme.onSurfaceVariant
+    val bg = style.sky ?: MaterialTheme.colorScheme.surfaceContainerLow
 
     Canvas(
         modifier.semantics { contentDescription = "Track. ${frame.description}" },
     ) {
         if (tick.longValue < 0L) return@Canvas // read here: a new tick redraws only this canvas
-        drawTrack(frame, anim, unit, measurer, ink, faint, panel, warm, rail, bg)
+        drawTrack(frame, anim, unit, measurer, ink, faint, panel, warm, rail, bg, scene, style)
     }
 }
 
@@ -140,11 +143,13 @@ private fun stepAnim(a: TrackAnim, f: com.walkbuddy.domain.TrackFrame, dt: Float
 private fun DrawScope.drawTrack(
     f: com.walkbuddy.domain.TrackFrame, a: TrackAnim, unit: UnitSystem, m: TextMeasurer,
     ink: Color, faint: Color, panel: Color, warm: Color, rail: Color, bg: Color,
+    scene: com.walkbuddy.domain.TrackScene = com.walkbuddy.domain.TrackScene.Metro, style: SceneStyle = sceneStyle(scene),
 ) {
     val w = size.width; val h = size.height
     if (w <= 0f || h <= 0f) return
     val dp = density
     drawRoundRect(bg, size = size, cornerRadius = CornerRadius(20f * dp))
+    drawScene(scene, style)
     val left = if (a.left.isNaN()) f.leftM else a.left
     val win = if (a.window.isNaN()) f.windowM else a.window
     val padX = 28f * dp
@@ -189,7 +194,11 @@ private fun DrawScope.drawTrack(
         val footY = laneTop + laneH * 0.78f
         // rails
         drawLine(rail.copy(alpha = 0.55f), Offset(padX * 0.4f, footY + 3f * dp), Offset(w - padX * 0.4f, footY + 3f * dp), 2f * dp)
-        drawLine(rail.copy(alpha = 0.3f), Offset(padX * 0.4f, footY + 8f * dp), Offset(w - padX * 0.4f, footY + 8f * dp), 2f * dp)
+        if (style.pathLike) {
+            drawLine(rail.copy(alpha = 0.35f), Offset(padX * 0.4f, footY + 7f * dp), Offset(w - padX * 0.4f, footY + 7f * dp), 9f * dp, StrokeCap.Round)
+        } else {
+            drawLine(rail.copy(alpha = 0.3f), Offset(padX * 0.4f, footY + 8f * dp), Offset(w - padX * 0.4f, footY + 8f * dp), 2f * dp)
+        }
         // sleepers every 5 m of the line
         val stepM = 5.0
         var k = Math.ceil(left / stepM) * stepM

@@ -18,6 +18,10 @@ import com.walkbuddy.ui.theme.WalkBuddyTheme
 class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels { AppViewModel.Factory }
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.walkbuddy.ui.AppLocale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // The splash stays up only until the saved settings are read, so there is no flash of the wrong screen.
         val splash = installSplashScreen()

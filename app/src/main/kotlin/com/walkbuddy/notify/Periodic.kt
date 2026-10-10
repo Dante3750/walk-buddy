@@ -115,6 +115,7 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             try {
+                runCatching { WalkReminderScheduler.reschedule(app) }
                 withTimeoutOrNull(8_000) { app.container.steps.sampleNow() }
             } finally {
                 pending.finish()

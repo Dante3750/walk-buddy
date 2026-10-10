@@ -40,11 +40,11 @@ fun AvatarPicker(current: WalkerAvatar, onChange: (WalkerAvatar) -> Unit, modifi
                     Modifier.size(72.dp)
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(18.dp))
                         .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
-                        .clickable(role = Role.RadioButton) { onChange(WalkerAvatar(style, current.colorIndex)) }
+                        .clickable(role = Role.RadioButton) { onChange(WalkerAvatar(style, current.colorIndex, current.accessory)) }
                         .semantics { selected = sel; contentDescription = "${style.label} walker" },
                     contentAlignment = Alignment.Center,
                 ) {
-                    WalkerBadge(WalkerAvatar(style, current.colorIndex), size = 56.dp)
+                    WalkerBadge(WalkerAvatar(style, current.colorIndex, current.accessory), size = 56.dp)
                 }
             }
         }
@@ -53,7 +53,7 @@ fun AvatarPicker(current: WalkerAvatar, onChange: (WalkerAvatar) -> Unit, modifi
                 val sel = i == current.colorIndex
                 Box(
                     Modifier.size(48.dp)
-                        .clickable(role = Role.RadioButton) { onChange(WalkerAvatar(current.style, i)) }
+                        .clickable(role = Role.RadioButton) { onChange(WalkerAvatar(current.style, i, current.accessory)) }
                         .semantics { selected = sel; contentDescription = "Colour ${WalkerPalette.names[i]}" },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -61,6 +61,22 @@ fun AvatarPicker(current: WalkerAvatar, onChange: (WalkerAvatar) -> Unit, modifi
                         Modifier.size(34.dp).background(WalkerPalette.color(i), CircleShape)
                             .border(if (sel) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
                     )
+                }
+            }
+        }
+        Text(androidx.compose.ui.res.stringResource(com.walkbuddy.R.string.avatar_extras), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.walkbuddy.domain.AvatarAccessory.values().forEach { acc ->
+                val sel = acc == current.accessory
+                Box(
+                    Modifier.size(64.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp))
+                        .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                        .clickable(role = Role.RadioButton) { onChange(WalkerAvatar(current.style, current.colorIndex, acc)) }
+                        .semantics { selected = sel; contentDescription = acc.label },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    WalkerBadge(WalkerAvatar(current.style, current.colorIndex, acc), size = 48.dp)
                 }
             }
         }
