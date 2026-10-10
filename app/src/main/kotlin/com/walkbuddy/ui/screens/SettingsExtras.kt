@@ -151,3 +151,32 @@ internal fun RemindersSection(a: SettingsActions, s: Settings) {
         Disclaimer(stringResource(R.string.rem_note))
     }
 }
+
+
+/** Optional gentle pace hints during walks together. Off by default; never shown in quiet mode or quiet hours. */
+@Composable
+internal fun CoachSection(a: SettingsActions, s: Settings) {
+    val mode = com.walkbuddy.domain.CoachMode.fromName(s.coachMode)
+    SectionCard(stringResource(R.string.coach_title)) {
+        Text(stringResource(R.string.coach_body))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.walkbuddy.domain.CoachMode.values().forEach { m ->
+                FilterChip(
+                    selected = m == mode, onClick = { a.save { setCoachMode(m.name) } }, modifier = Modifier.heightIn(min = 48.dp),
+                    label = {
+                        Text(
+                            stringResource(
+                                when (m) {
+                                    com.walkbuddy.domain.CoachMode.Off -> R.string.coach_off
+                                    com.walkbuddy.domain.CoachMode.Gentle -> R.string.coach_gentle
+                                    com.walkbuddy.domain.CoachMode.SlowestPace -> R.string.coach_slowest_mode
+                                },
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+        Disclaimer(stringResource(R.string.coach_note))
+    }
+}

@@ -166,4 +166,45 @@
     <string name="card_route_sub">डिफ़ॉल्ट रूप से बंद। चालू करने पर कार्ड में आपके अपने रास्ते का आकार दिखता है, फिर भी बिना नक्शे या जगहों के नाम के।</string>
     <string name="card_share">कार्ड साझा करें</string>
     <string name="card_note">कार्ड में आपके आँकड़े और साथ चलने का तरीका होता है। उसमें कभी नक्शा, जगहों के नाम या साथी की स्थिति नहीं होती।</string>
+
+    <string name="resume_title">अपनी सैर फिर शुरू करें?</string>
+    <string name="resume_body_solo">सैर के दौरान Android ने वॉक बडी बंद कर दिया (अब तक %1$s)। जहाँ छोड़ा था वहीं से जारी रखें?</string>
+    <string name="resume_body_partner">साथी के साथ सैर के दौरान Android ने वॉक बडी बंद कर दिया (अब तक %1$s)। दोबारा जुड़कर आगे बढ़ें?</string>
+    <string name="resume_body_group">समूह की सैर के दौरान Android ने वॉक बडी बंद कर दिया (अब तक %1$s)। समूह में वापस जुड़कर आगे बढ़ें?</string>
+    <string name="resume_yes">जारी रखें</string>
+    <string name="resume_no">नहीं, धन्यवाद</string>
+
+    <string name="nav_title">एक-दूसरे को खोजें</string>
+    <string name="nav_target_partner">आपका साथी</string>
+    <string name="nav_target_behind">सबसे पीछे</string>
+    <string name="nav_target_pin">मिलने की जगह</string>
+    <string name="nav_turn_ahead">सीधे आगे</string>
+    <string name="nav_turn_slight_left">थोड़ा बाईं ओर</string>
+    <string name="nav_turn_slight_right">थोड़ा दाईं ओर</string>
+    <string name="nav_turn_left">आपकी बाईं ओर</string>
+    <string name="nav_turn_right">आपकी दाईं ओर</string>
+    <string name="nav_turn_behind">आपके पीछे</string>
+    <string name="nav_waiting_gps">आपकी अपनी लोकेशन का इंतज़ार है।</string>
+    <string name="nav_no_compass">इस फ़ोन में कंपास सेंसर नहीं है, इसलिए दिशा सिर्फ़ शब्दों में दिखती है।</string>
+    <string name="nav_calibrate">कंपास को कैलिब्रेट करना होगा। फ़ोन को कुछ सेकंड आठ (8) के आकार में घुमाएँ।</string>
+    <string name="nav_legs_title">मिलने की जगह</string>
+    <string name="nav_you">आप</string>
+    <string name="nav_there">पहुँच गए</string>
+    <string name="nav_under_minute">एक मिनट से कम</string>
+    <string name="nav_min">%1$d मिनट</string>
+    <string name="nav_about_min">लगभग %1$d मिनट</string>
+    <string name="nav_hours_min">%1$d घंटा %2$d मिनट</string>
+    <string name="nav_eta_note">समय हर व्यक्ति की मौजूदा चाल पर आधारित है, और कोई रुका हो तो सामान्य चाल मानी जाती है। ये अनुमान हैं।</string>
+    <string name="nav_meet_here">यहाँ मिलें</string>
+    <string name="nav_clear_pin">मिलने की जगह हटाएँ</string>
+
+    <string name="coach_title">चाल के सुझाव</string>
+    <string name="coach_body">वैकल्पिक, हल्के सुझाव, जब आपकी और साथी की चाल कुछ देर तक साफ़ अलग रहे।</string>
+    <string name="coach_off">बंद</string>
+    <string name="coach_gentle">हल्के सुझाव</string>
+    <string name="coach_slowest_mode">धीमे साथी की चाल से चलें</string>
+    <string name="coach_note">हर सैर में गिनती के सुझाव, कई मिनट के अंतर पर। शांत मोड या शांत घंटों में कभी नहीं, और समूह के स्वीपर से कभी तेज़ चलने को नहीं कहा जाता।</string>
+    <string name="coach_ease">आप थोड़ा आगे हैं। थोड़ा धीमे चलें तो सब साथ रहेंगे।</string>
+    <string name="coach_slowest">धीमे साथी की चाल से चल रहे हैं: थोड़ा धीमे चलें।</string>
+    <string name="coach_pickup">बाकी लोग थोड़ा आगे हैं। मन हो तो थोड़ा तेज़ कदम मदद कर सकते हैं।</string>
 </resources>

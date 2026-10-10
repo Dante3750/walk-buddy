@@ -151,6 +151,27 @@ private fun MainScaffold(vm: AppViewModel) {
     val snackbar = remember { SnackbarHostState() }
     val ctxMain = LocalContext.current
     val pendingAction by vm.pendingAction.collectAsStateWithLifecycle()
+    val resumeOffer by vm.resumeOffer.collectAsStateWithLifecycle()
+    resumeOffer?.let { offer ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.resume_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        when (offer.kind) {
+                            com.walkbuddy.domain.ResumeKind.Solo -> R.string.resume_body_solo
+                            com.walkbuddy.domain.ResumeKind.Partner -> R.string.resume_body_partner
+                            com.walkbuddy.domain.ResumeKind.Group -> R.string.resume_body_group
+                        },
+                        com.walkbuddy.domain.Format.duration(offer.walkedMs),
+                    ),
+                )
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.resumeWalk(offer) }) { Text(stringResource(R.string.resume_yes)) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { vm.discardResume() }) { Text(stringResource(R.string.resume_no)) } },
+        )
+    }
 
     // Badge unlocks: a snackbar is announced by TalkBack by itself, so milestones are never visual-only.
     LaunchedEffect(Unit) {

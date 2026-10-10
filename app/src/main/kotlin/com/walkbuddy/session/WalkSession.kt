@@ -46,6 +46,12 @@ import com.walkbuddy.power.PowerMonitor
 import com.walkbuddy.rtc.NetworkWatcher
 import com.walkbuddy.domain.NudgeConfig
 import com.walkbuddy.domain.PeerMessage
+import com.walkbuddy.domain.PaceCoach
+import com.walkbuddy.domain.CoachAdvice
+import com.walkbuddy.domain.CoachConfig
+import com.walkbuddy.domain.CoachInput
+import com.walkbuddy.domain.CoachMode
+import com.walkbuddy.R
 import com.walkbuddy.domain.ResumeCodec
 import com.walkbuddy.domain.ResumeKind
 import com.walkbuddy.domain.ResumePolicy
@@ -173,6 +179,7 @@ class WalkSession(
     private var route: RouteRecorder? = null
     /** The walk that was running when Android killed the app, while it is being resumed (alpha 2.0). */
     private var carry: ResumeState? = null
+    private val coach = PaceCoach()
     private var lastResumeSaveMs = 0L
     private var lastResumeDistM = 0.0
 
@@ -403,6 +410,7 @@ class WalkSession(
             // A resumed walk keeps its place in time: the minutes the app was gone are not counted as walking.
             walkStartMs = carry?.let { now - it.walkedMs } ?: now
             lastResumeSaveMs = 0L; lastResumeDistM = 0.0
+            coach.config = CoachConfig(mode = CoachMode.fromName(s.coachMode)); coach.reset()
             val startSample = steps.sampleNow() // credits steps before the walk to the day, and gives the walk its starting counter
             val stepLen = s.calibratedStepLengthM
             val cfg = WalkConfig(
@@ -490,6 +498,7 @@ class WalkSession(
             recordShared(st, now)
             _ui.update { it.copy(walk = st, trails = trailBook.snapshot(), locStatus = locSt, locSearchingSec = locSec) }
             saveResume(st, now)
+            coachTick(st, now)
             refreshLink()
             st.nudge?.let { showBanner(it.text, nudge = true) }
             e.takeSpot()?.let { offer -> _ui.update { it.copy(spotOffer = offer) } }
@@ -512,6 +521,22 @@ class WalkSession(
         )
         val json = ResumeCodec.encode(state)
         scope.launch { settingsStore.setResume(json) }
+    }
+
+    /** Optional gentle pace hints (off by default). Respects quiet mode and quiet hours, and has its own long cooldown. */
+    private fun coachTick(st: WalkState, now: Long) {
+        if (coach.config.mode == CoachMode.Off || st.buddies.isEmpty()) return
+        val advice = coach.update(
+            CoachInput(
+                nowMs = now, mySpeedMps = st.mySpeedMps, othersMps = st.buddies.map { if (it.pos != null) it.speedMps else null },
+                iAmSweeper = false, quiet = _ui.value.quiet, quietHours = settings.quietHours.isQuiet(Clock.hourOfDay(now)),
+            ),
+        )
+        when (advice) {
+            is CoachAdvice.EaseOff -> showBanner(app.getString(if (coach.config.mode == CoachMode.SlowestPace) R.string.coach_slowest else R.string.coach_ease), nudge = true)
+            is CoachAdvice.PickUp -> showBanner(app.getString(R.string.coach_pickup), nudge = true)
+            CoachAdvice.None -> Unit
+        }
     }
 
     private fun clearResume() {

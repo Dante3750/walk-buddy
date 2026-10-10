@@ -188,7 +188,7 @@ fun GroupLiveContent(ui: GroupUi, unit: UnitSystem, tiles: Boolean, a: GroupActi
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
-                0 -> GroupTrackTab(ui, w, unit, lowPower)
+                0 -> GroupTrackTab(ui, w, unit, lowPower, a)
                 1 -> GroupMapTab(ui, w, unit, tiles, a)
                 2 -> GroupPeopleTab(ui, w, unit, a)
                 else -> GroupInviteTab(ui, w, a)
@@ -281,7 +281,7 @@ private fun EndDialog(ui: GroupUi, onDismiss: () -> Unit, a: GroupActions) {
 
 /** Everyone on parallel lanes along one line: who is at the front, who is at the back, and how long the group is. */
 @Composable
-private fun GroupTrackTab(ui: GroupUi, w: GroupState?, unit: UnitSystem, lowPower: Boolean) {
+private fun GroupTrackTab(ui: GroupUi, w: GroupState?, unit: UnitSystem, lowPower: Boolean, a: GroupActions) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (w == null) {
             EmptyState("Getting ready", "Your walkers appear here as soon as the group starts moving.")
@@ -295,6 +295,11 @@ private fun GroupTrackTab(ui: GroupUi, w: GroupState?, unit: UnitSystem, lowPowe
         )
         Text(statusLine(ui, w, unit), Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
         if (!ui.sharing) Disclaimer("You are not sharing your location. You can still see the group.")
+        com.walkbuddy.ui.components.NavSection(
+            myPos = w.myPos, others = w.members.map { com.walkbuddy.domain.ArrowCandidate(it.id, it.name, it.pos ?: it.lastPos, it.alongM) },
+            pin = ui.pin?.pos, isGroup = true, legs = com.walkbuddy.ui.components.groupLegs(w, ui.pin?.pos), unit = unit,
+            onMeetHere = if (ui.iAmHost) ({ w.myPos?.let(a.onSetPin) }) else null, onClearPin = if (ui.iAmHost) a.onClearPin else null,
+        )
     }
 }
 

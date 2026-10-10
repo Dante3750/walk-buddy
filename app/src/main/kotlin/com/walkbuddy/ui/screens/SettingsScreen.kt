@@ -221,6 +221,7 @@ fun SettingsContent(s: Settings?, a: SettingsActions, stepHealth: StepHealthUi? 
         StepLengthSection(a, s)
         QuietHoursSection(a, s)
         WalkSection(a, s)
+        CoachSection(a, s)
         MapSection(a, s)
         ExtrasSection(a, s)
         HealthSection(a, s)

@@ -3,6 +3,7 @@ package com.walkbuddy.session
 import android.content.Context
 import com.walkbuddy.data.AppRepository
 import com.walkbuddy.data.Clock
+import com.walkbuddy.R
 import com.walkbuddy.data.RouteStore
 import com.walkbuddy.data.Settings
 import com.walkbuddy.data.SettingsStore
@@ -12,6 +13,11 @@ import com.walkbuddy.domain.AvatarCode
 import com.walkbuddy.domain.LocationStatus
 import com.walkbuddy.domain.LocationStatusLogic
 import com.walkbuddy.domain.Polyline
+import com.walkbuddy.domain.PaceCoach
+import com.walkbuddy.domain.CoachAdvice
+import com.walkbuddy.domain.CoachConfig
+import com.walkbuddy.domain.CoachInput
+import com.walkbuddy.domain.CoachMode
 import com.walkbuddy.domain.ResumeCodec
 import com.walkbuddy.domain.ResumeKind
 import com.walkbuddy.domain.ResumePolicy
@@ -168,6 +174,7 @@ class GroupSession(
     private var hadLocationPermission = false
     /** The group walk that was running when Android ended the app, while it is being resumed (alpha 2.0). */
     private var carry: ResumeState? = null
+    private val coach = PaceCoach()
     private var lastResumeSaveMs = 0L
     private var lastResumeDistM = 0.0
 
@@ -354,6 +361,7 @@ class GroupSession(
     private fun startTracking(now: Long, gs: GroupSettings) {
         walkStartMs = carry?.let { now - it.walkedMs } ?: now
         lastResumeSaveMs = 0L; lastResumeDistM = 0.0
+        coach.config = CoachConfig(mode = CoachMode.fromName(settings.coachMode)); coach.reset()
         carry?.let { c0 -> route?.let { r -> Polyline.decode(c0.route).forEach { pt -> r.add(c0.startMs, pt) } } }
         val e = GroupEngine(selfId, nickname, walkConfig(gs.goalSteps), now)
         engine = e
@@ -427,6 +435,7 @@ class GroupSession(
             recordShared(st, now)
             _ui.update { it.copy(walk = st, groupSteps = st.goal.totalSteps, locStatus = locSt, locSearchingSec = locSec) }
             saveResume(st, now)
+            coachTick(st, now)
             st.nudge?.let { showBanner(it.text, nudge = true) }
             if (st.goal.reached && !goalCelebrated && st.goal.goal > 0) {
                 goalCelebrated = true
@@ -450,6 +459,22 @@ class GroupSession(
         )
         val json = ResumeCodec.encode(state)
         scope.launch { settingsStore.setResume(json) }
+    }
+
+    /** Optional gentle pace hints (off by default). The sweeper walks at the back on purpose and is never asked to speed up. */
+    private fun coachTick(st: GroupState, now: Long) {
+        if (coach.config.mode == CoachMode.Off || st.members.isEmpty()) return
+        val advice = coach.update(
+            CoachInput(
+                nowMs = now, mySpeedMps = st.mySpeedMps, othersMps = st.members.map { if (it.pos != null) it.speedMps else null },
+                iAmSweeper = sweeperSelf, quiet = _ui.value.quiet, quietHours = settings.quietHours.isQuiet(Clock.hourOfDay(now)),
+            ),
+        )
+        when (advice) {
+            is CoachAdvice.EaseOff -> showBanner(app.getString(if (coach.config.mode == CoachMode.SlowestPace) R.string.coach_slowest else R.string.coach_ease), nudge = true)
+            is CoachAdvice.PickUp -> showBanner(app.getString(R.string.coach_pickup), nudge = true)
+            CoachAdvice.None -> Unit
+        }
     }
 
     private fun clearResume() {

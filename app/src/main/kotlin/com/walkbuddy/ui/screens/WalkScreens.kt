@@ -349,6 +349,11 @@ private fun TrackLive(
             if (w.buddies.isEmpty()) {
                 Disclaimer("Waiting for your buddy to appear. You can keep walking; they will show up on the Track when they join.")
             }
+            com.walkbuddy.ui.components.NavSection(
+                myPos = w.myPos, others = w.buddies.map { com.walkbuddy.domain.ArrowCandidate(it.id, it.name, it.pos ?: it.lastPos, it.alongM) },
+                pin = ui.pin?.pos, isGroup = false, legs = com.walkbuddy.ui.components.partnerLegs(w, ui.pin?.pos), unit = unit,
+                onMeetHere = { w.myPos?.let(a.onSetPin) }, onClearPin = a.onClearPin,
+            )
             val dist = Units.distanceAmount(w.myDistanceM, unit)
             StatStrip(
                 listOf(

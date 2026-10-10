@@ -439,6 +439,29 @@ class AppViewModel(private val c: AppContainer, private val appContext: android.
         WalkService.start(appContext)
     }
 
+    // ---- resume a walk Android ended (alpha 2.0) ----
+
+    /** The interrupted walk to offer, or null. Only offered while nothing else is running, and never a stale or tiny one. */
+    val resumeOffer: StateFlow<com.walkbuddy.domain.ResumeState?> = combine(c.settings.settings, c.session.ui, c.groupSession.ui) { st, ses, grp ->
+        val state = com.walkbuddy.domain.ResumeCodec.decode(st.resumeJson.ifEmpty { null })
+        val active = ses.phase != com.walkbuddy.session.Phase.Idle || grp.phase != com.walkbuddy.session.GroupPhase.Idle
+        when (val d = com.walkbuddy.domain.ResumePolicy.decide(state, System.currentTimeMillis(), active)) {
+            is com.walkbuddy.domain.ResumeDecision.Offer -> d.state
+            is com.walkbuddy.domain.ResumeDecision.Discard -> { if (state != null) viewModelScope.launch { c.settings.setResume("") }; null }
+            else -> null
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun resumeWalk(s: com.walkbuddy.domain.ResumeState) {
+        when (s.kind) {
+            com.walkbuddy.domain.ResumeKind.Group -> c.groupSession.resumeGroup(s)
+            else -> c.session.resumeWalk(s)
+        }
+        WalkService.start(appContext)
+    }
+
+    fun discardResume() { viewModelScope.launch { c.settings.setResume("") } }
+
     fun startDemoGroup() = c.groupSession.startDemo()
     fun groupEnd(closeForEveryone: Boolean) = c.groupSession.endWalk(closeForEveryone)
     fun groupCancel() = c.groupSession.cancel()

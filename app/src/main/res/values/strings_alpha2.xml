@@ -166,4 +166,45 @@
     <string name="card_route_sub">Off by default. When on, the card shows the shape of your own route, still without a map or place names.</string>
     <string name="card_share">Share card</string>
     <string name="card_note">The card has your numbers and how you moved together. It never has a map, place names or your buddy\'s position.</string>
+
+    <string name="resume_title">Resume your walk?</string>
+    <string name="resume_body_solo">Android closed Walk Buddy during a walk (%1$s so far). Pick it up where you left off?</string>
+    <string name="resume_body_partner">Android closed Walk Buddy during a walk with your buddy (%1$s so far). Reconnect and carry on?</string>
+    <string name="resume_body_group">Android closed Walk Buddy during a group walk (%1$s so far). Rejoin the group and carry on?</string>
+    <string name="resume_yes">Resume</string>
+    <string name="resume_no">No thanks</string>
+
+    <string name="nav_title">Find each other</string>
+    <string name="nav_target_partner">Your buddy</string>
+    <string name="nav_target_behind">Furthest behind</string>
+    <string name="nav_target_pin">Meeting point</string>
+    <string name="nav_turn_ahead">Straight ahead</string>
+    <string name="nav_turn_slight_left">A little to the left</string>
+    <string name="nav_turn_slight_right">A little to the right</string>
+    <string name="nav_turn_left">To your left</string>
+    <string name="nav_turn_right">To your right</string>
+    <string name="nav_turn_behind">Behind you</string>
+    <string name="nav_waiting_gps">Waiting for your own location.</string>
+    <string name="nav_no_compass">This phone has no compass sensor, so only the direction in words is shown.</string>
+    <string name="nav_calibrate">The compass needs calibrating. Wave the phone in a figure of eight for a few seconds.</string>
+    <string name="nav_legs_title">Meeting point</string>
+    <string name="nav_you">You</string>
+    <string name="nav_there">there</string>
+    <string name="nav_under_minute">under a minute</string>
+    <string name="nav_min">%1$d min</string>
+    <string name="nav_about_min">about %1$d min</string>
+    <string name="nav_hours_min">%1$d h %2$d min</string>
+    <string name="nav_eta_note">Times use each person\'s current walking speed, or a typical pace when someone is standing still. They are estimates.</string>
+    <string name="nav_meet_here">Meet here</string>
+    <string name="nav_clear_pin">Clear the meeting point</string>
+
+    <string name="coach_title">Pace hints</string>
+    <string name="coach_body">Optional, gentle hints when your pace and your buddy\'s are clearly different for a while.</string>
+    <string name="coach_off">Off</string>
+    <string name="coach_gentle">Gentle hints</string>
+    <string name="coach_slowest_mode">Match the slower walker</string>
+    <string name="coach_note">At most a few hints per walk, minutes apart. Never in quiet mode or quiet hours, and a group sweeper is never asked to speed up.</string>
+    <string name="coach_ease">You are a little ahead. Easing off a touch keeps everyone together.</string>
+    <string name="coach_slowest">Walking at the slower person\'s pace: ease off a little.</string>
+    <string name="coach_pickup">The others are a touch ahead. Only if you feel like it, a slightly quicker step may help.</string>
 </resources>
