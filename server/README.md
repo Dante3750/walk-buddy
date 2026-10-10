@@ -5,7 +5,7 @@ Two jobs, both in memory only: **signaling for partner walks** (below) and **rel
 
 ## Partner walks: signaling
 
-A tiny relay that lets two to four phones find each other. Phones that share a 6-character code exchange WebRTC
+A tiny relay that lets phones find each other (the app pairs two; the server allows up to four per room). Phones that share a 6-character code exchange WebRTC
 `offer` / `answer` / `ice` messages through it, then talk **directly** over a WebRTC data channel. Steps, pace and
 locations never pass through this server **while the direct channel works**. Since server version 2 the same room also
 carries a small standby relay (`pdata`, below) so a walk survives a dropped direct link.
@@ -40,7 +40,7 @@ carries a small standby relay (`pdata`, below) so a walk survives a dropped dire
 cd server
 npm install
 npm start            # listens on :8080 (PORT, HOST env vars)
-npm test             # 49 tests with real WebSocket clients
+npm test             # 60 tests with real WebSocket clients
 ```
 
 Environment: `PORT`, `HOST`, `TRUST_PROXY=1` (use `X-Forwarded-For` for per-IP limits behind a reverse proxy),
@@ -54,7 +54,7 @@ Environment: `PORT`, `HOST`, `TRUST_PROXY=1` (use `X-Forwarded-For` for per-IP l
    (and `HEALTH_URL`) in `domain/src/main/kotlin/com/walkbuddy/domain/ServerConfig.kt` to the same address with `wss://` and rebuild.
    The official build already points at `wss://walk-buddy-server-sxpz.onrender.com`.
 
-The free plan sleeps after ~15 min idle, so the first connection after a break can take ~30 s.
+The free plan sleeps after ~15 min idle, so the first connection after a break can take up to about a minute.
 
 ### Docker
 

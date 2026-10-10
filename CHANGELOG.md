@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased (docs and CI only, no app change)
+
+- CI: after Paparazzi renders, the `screenshots` job copies a curated, downscaled set of PNGs to `docs/screens/` and commits them to `main` (`[skip ci]`, only on push to main, only when they changed, `git pull --rebase` first, one publish at a time). No branch or tag is created.
+- README: screenshots refreshed for alpha 2.0 (home, live walk, Track themes, group, history, challenges, Self-check, Battery card, settings, walk summary); status badge and notes corrected; server README test count and wake-up time corrected.
+
 ## alpha 2.0 (2.0.0-alpha)
 
 In-app improvements, no server change. Compiled and tested on CI (domain 515 tests, server 60 tests); nothing was run on a phone.

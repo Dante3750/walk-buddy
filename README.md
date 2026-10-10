@@ -10,11 +10,11 @@ A native Android app for evening walks with a partner, or an open group of up to
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF)
-![Status](https://img.shields.io/badge/status-alpha%201.4-orange)
+![Status](https://img.shields.io/badge/status-alpha%202.0-orange)
 
 </div>
 
-> **Honest status (alpha 1.8):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, WebRTC pairing, QR scanning, the widget and the Android 16 live update are untested on a device. See [Privacy and honest limitations](#privacy-and-honest-limitations).
+> **Honest status (alpha 2.0):** the app compiles and CI is green (domain tests, server tests, debug APK). It has **not been run on a phone yet**, so GPS, the foreground service, WebRTC pairing, QR scanning, the widget, the Android 16 live update, the compass, reminders and Health Connect are untested on a device. See [Privacy and honest limitations](#privacy-and-honest-limitations).
 
 ## Why
 
@@ -136,11 +136,43 @@ Walk Buddy is built to cost very little when you are only counting steps, and to
 
 ## Screenshots
 
-| Home | Home (dark) | Live walk | Weekly recap |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screens/home.png" width="180" alt="Home with the step hero"> | <img src="docs/screens/home-dark.png" width="180" alt="Home in true-black dark theme"> | <img src="docs/screens/live-walk.png" width="180" alt="Live walk screen"> | <img src="docs/screens/weekly-recap.png" width="180" alt="Weekly recap"> |
+Rendered from the real Compose screens with [Paparazzi](https://github.com/cashapp/paparazzi) (JVM, sample data, no phone), so they show layout and styling, not live GPS. CI refreshes `docs/screens/` on every push to `main`.
 
-> **These images are from alpha 1.2 and are not refreshed.** Alpha 1.4 changed the home screen (the two walk-mode cards) and the group screens, but CI screenshots are only available as a workflow artifact that GitHub lets you download after signing in, and they could not be fetched automatically. To see the current UI, download the `screenshots` artifact from the [latest CI run](https://github.com/Dante3750/walk-buddy/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess), or build the APK.
+**Home, walks and groups**
+
+| Home | Home (dark) | Live walk (dark) | Group lobby |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/home.png" width="180" alt="Home: steps ring, verified steps, walk-together cards"> | <img src="docs/screens/home-dark.png" width="180" alt="Home in true-black dark theme"> | <img src="docs/screens/live-walk-dark.png" width="180" alt="Live partner walk with Track view, reactions and End walk"> | <img src="docs/screens/lobby.png" width="180" alt="Partner lobby with code and QR"> |
+
+| Group walk (starting) | Walks together | Walk summary | Weekly recap |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/group-live.png" width="180" alt="Group walk screen with Track, Map, People and Invite tabs, before others have joined"> | <img src="docs/screens/history.png" width="180" alt="Walks together history rows"> | <img src="docs/screens/summary-card.png" width="180" alt="Finished walk summary with check-in and share highlights"> | <img src="docs/screens/weekly-recap.png" width="180" alt="Weekly recap"> |
+
+**Track view themes** (one lane per walker; Metro, Train, Trail, Night sky and the four seasons)
+
+| Metro | Metro (dark) | Train | Trail |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/track-metro.png" width="180" alt="Track view, Metro"> | <img src="docs/screens/track-metro-dark.png" width="180" alt="Track view, Metro, dark"> | <img src="docs/screens/track-train.png" width="180" alt="Track view, Train"> | <img src="docs/screens/track-trail.png" width="180" alt="Track view, Trail"> |
+
+| Night sky | Spring | Summer | Autumn | Winter |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/track-nightsky.png" width="140" alt="Track view, Night sky"> | <img src="docs/screens/track-spring.png" width="140" alt="Track view, Spring"> | <img src="docs/screens/track-summer.png" width="140" alt="Track view, Summer"> | <img src="docs/screens/track-autumn.png" width="140" alt="Track view, Autumn"> | <img src="docs/screens/track-winter.png" width="140" alt="Track view, Winter"> |
+
+**Habits, health and settings**
+
+| Challenges | Challenges (dark) | Self-check | Self-check (dark) |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/challenges.png" width="180" alt="Challenges with progress and templates"> | <img src="docs/screens/challenges-dark.png" width="180" alt="Challenges, dark"> | <img src="docs/screens/selfcheck.png" width="180" alt="Self-check with a fix button per row"> | <img src="docs/screens/selfcheck-dark.png" width="180" alt="Self-check, dark"> |
+
+| Battery card | Settings | Badges | Trends |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/settings-battery.png" width="180" alt="Settings: battery mode, Battery saver switch and tips"> | <img src="docs/screens/settings.png" width="180" alt="Full Settings page"> | <img src="docs/screens/badges.png" width="180" alt="Badges"> | <img src="docs/screens/trends.png" width="180" alt="Trends and best walking hour"> |
+
+| Couple | Couple streak | Home (goal reached) | Onboarding | About |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/screens/couple.png" width="140" alt="Couple page"> | <img src="docs/screens/couple-streak.png" width="140" alt="Couple streak card"> | <img src="docs/screens/home-goal.png" width="140" alt="Home when the goal is reached"> | <img src="docs/screens/onboarding.png" width="140" alt="Onboarding"> | <img src="docs/screens/about.png" width="140" alt="About with update link"> |
+
+Not shown: the group screen with a full roster (the sample data has only one person), the share-card picture itself, and anything that needs a real device or cannot be rendered offline: the OpenStreetMap map, the QR scanner camera, the compass arrow, the widget and the Android 16 live-update chip.
 
 ## Quick start
 
@@ -202,16 +234,16 @@ Partner mode: phones swap WebRTC offers through the server, then talk directly; 
 Tests and CI:
 
 ```bash
-./gradlew :domain:test                 # 515 tests
+./gradlew :domain:test                 # ~515 tests
 scripts/domain-test-offline.sh         # same tests with only the jars inside a Gradle distribution
 cd server && npm test                  # 60 tests
 ```
 
-CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:domain:test`, `:app:assembleDebug` and lint (reported, not blocking), uploads the debug APK, and renders every screen with Paparazzi in a separate non-blocking job (the `screenshots` artifact). It never pushes a branch or a tag.
+CI (`.github/workflows/ci.yml`) runs the server tests on Node 18 and 22, then `:domain:test`, `:app:assembleDebug` and lint (reported, not blocking), uploads the debug APK, and renders every screen with Paparazzi in a separate non-blocking job. On a push to `main` that job also commits the refreshed images to `docs/screens/` (message ends `[skip ci]`, only when they changed). CI never creates a branch or a tag.
 
 ## Privacy and honest limitations
 
-- **Where data goes.** Steps, walks, spots and settings stay in a local database (`allowBackup` is off). Partner mode sends live data phone to phone. In an open group your name, steps and a possibly blurred position (exact, about 100 m or about 500 m grid, applied on your phone) go to the server you chose, which relays them to that group and stores nothing. Other members' data is never saved on your phone.
+- **Where data goes.** Steps, walks, spots and settings stay in a local database (`allowBackup` is off). Partner mode sends live data phone to phone. In an open group your name, steps and a possibly blurred position (exact, about 100 m or about 500 m grid, applied on your phone) go to the built-in server, which relays them to that group and stores nothing. Other members' data is never saved on your phone.
 - **Trust.** Anyone with the code or QR can join an open group unless the host approves each person, so share it only with people you trust. The server operator can see IP addresses and traffic while it passes through; the built-in server is a free personal host; self-host if you need more control. STUN uses Google's public servers by default.
 - **Not tested on a device.** No phone has run this build. GPS behaviour, the foreground service, haptics, QR scanning, map gestures, OSM tiles and WebRTC connectivity are untested.
 - **No TURN relay.** The direct channel uses STUN only, by design. On carrier-grade NAT and strict Wi-Fi it can fail; the walk then runs through the server relay (tiny updates only, nothing stored). Neither path has been tested between two real phones.

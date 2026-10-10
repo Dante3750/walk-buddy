@@ -8,7 +8,7 @@ node_modules/
 *.log
 .DS_Store
 
-# Paparazzi output (rendered in CI and uploaded as a CI workflow artifact, not committed)
+# Paparazzi output (raw output stays out of git; CI commits the curated, downscaled copies to docs/screens/)
 app/src/test/snapshots/
 
 # Signing material is yours alone: never commit it
